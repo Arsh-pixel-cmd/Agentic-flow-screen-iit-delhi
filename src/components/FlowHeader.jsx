@@ -22,7 +22,7 @@ const FlowHeader = ({ prompt, setPrompt, runFlow, flowStatus, onOpenSettings }) 
         </div>
         <div>
           <h1 className="text-sm font-bold tracking-tight text-slate-200">
-            Mandelbrot
+           Agentic flow
           </h1>
           <p className="text-[8px] uppercase tracking-[0.2em] text-slate-600 -mt-0.5">
             Agentic Design
