@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Sparkles, AlertTriangle, Play, RefreshCw } from 'lucide-react';
+import { Sparkles, AlertTriangle, Play, RefreshCw, Trash2 } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import { motion } from 'framer-motion';
 
 // Core Schema & Logic
 import { WORKFLOW_PHASES, EDGES, TOOL_REGISTRY } from './data/schema';
@@ -8,13 +9,15 @@ import { validateGraph } from './lib/graphValidator';
 import { computeLayout } from './lib/layoutEngine';
 import { computeEdgePath, bundleEdges } from './lib/edgeRouter';
 import { useWorkflowStore, selectActiveNodeId, selectRevealedPhases } from './lib/store';
+import { callLLM } from './lib/llm';
 
 // Components
 import FlowHeader from './components/FlowHeader';
 import FlowFooter from './components/FlowFooter';
 import FlowControls from './components/FlowControls';
 import NodeContainer from './components/NodeContainer';
-import SettingsModal from './components/SettingsModal';
+import PhaseSummaryBox from './components/PhaseSummaryBox';
+import ToolDock from './components/ToolDock';
 
 const App = () => {
   const [initError, setInitError] = useState(null);
@@ -24,16 +27,34 @@ const App = () => {
   const setGraphStatus = useWorkflowStore(state => state.setGraphStatus);
   const selectedNodeId = useWorkflowStore(selectActiveNodeId);
   const selectNode = useWorkflowStore(state => state.selectNode);
-  const revealedPhases = useWorkflowStore(selectRevealedPhases);
   const nodeStates = useWorkflowStore(state => state.nodeStates);
-  
+  const nodeResults = useWorkflowStore(state => state.nodeResults);
+  const projectPrompt = useWorkflowStore(state => state.projectPrompt);
+  const setProjectPrompt = useWorkflowStore(state => state.setProjectPrompt);
+  const currentPhaseIndex = useWorkflowStore(state => state.currentPhaseIndex);
+  const setCurrentPhaseIndex = useWorkflowStore(state => state.setCurrentPhaseIndex);
+
   const [phaseOverlay, setPhaseOverlay] = useState(null);
 
-  // Canvas Viewport logic remains standard
+  // NEURAL SEQUENCE OBJECT - Pre-initialized context
+  const neuralSequence = {
+    projectContext: '',
+    phaseHistory: [],
+    accumulatedKnowledge: '',
+  };
+
+  // Canvas Viewport logic
   const [camera, setCamera] = useState({ x: 100, y: 60, zoom: 0.55 });
   const [isPanning, setIsPanning] = useState(false);
   const canvasRef = useRef(null);
   const lastMousePos = useRef({ x: 0, y: 0 });
+
+  // Toolkit State
+  const [activeTool, setActiveTool] = useState('cursor');
+  const [stickyNotes, setStickyNotes] = useState([]);
+  const [strokes, setStrokes] = useState([]);
+  const [currentStroke, setCurrentStroke] = useState(null);
+  const [isDrawing, setIsDrawing] = useState(false);
 
   // Boot validation
   useEffect(() => {
@@ -48,13 +69,13 @@ const App = () => {
     }
   }, [setGraphStatus]);
 
-  // Compute Layout (Memoized so it doesn't recalculate unless dimensions drop)
+  // Compute Layout 
   const layout = useMemo(() => {
-    if (graphStatus === 'error' || graphStatus === 'idle') return null;
-    return computeLayout('desktop', 2000, 1000); // fixed virtual boundaries for initial
+    if (graphStatus === 'error') return null;
+    return computeLayout('desktop', 2000, 1000);
   }, [graphStatus]);
 
-  // Bundle Edges (Memoized)
+  // Bundle Edges 
   const bundledEdges = useMemo(() => {
     if (graphStatus === 'error' || graphStatus === 'idle') return [];
     return bundleEdges(EDGES);
@@ -85,12 +106,31 @@ const App = () => {
     return () => canvas.removeEventListener('wheel', onWheel);
   }, []);
 
+  const getCanvasCoords = useCallback((clientX, clientY) => {
+    return {
+      x: (clientX - camera.x) / camera.zoom,
+      y: (clientY - camera.y) / camera.zoom
+    };
+  }, [camera]);
+
   const handleMouseDown = useCallback((e) => {
-    if (e.button === 1 || (e.button === 0 && e.altKey) || e.target.id === 'canvas-bg') {
-      setIsPanning(true);
-      lastMousePos.current = { x: e.clientX, y: e.clientY };
+    if (e.target.closest('.n8n-node') || e.target.closest('.sticky-note')) return;
+
+    if (activeTool === 'cursor') {
+      if (e.button === 1 || (e.button === 0 && e.altKey) || e.target.id === 'canvas-bg') {
+        setIsPanning(true);
+        lastMousePos.current = { x: e.clientX, y: e.clientY };
+      }
+    } else if (activeTool === 'sticky') {
+      const coords = getCanvasCoords(e.clientX, e.clientY);
+      setStickyNotes(prev => [...prev, { id: Date.now(), x: coords.x, y: coords.y, text: '' }]);
+      setActiveTool('cursor');
+    } else if (activeTool === 'highlighter') {
+      setIsDrawing(true);
+      const coords = getCanvasCoords(e.clientX, e.clientY);
+      setCurrentStroke([coords]);
     }
-  }, []);
+  }, [activeTool, getCanvasCoords]);
 
   const handleMouseMove = useCallback(
     (e) => {
@@ -99,80 +139,123 @@ const App = () => {
         canvasRef.current.style.setProperty('--mouse-x', `${e.clientX - rect.left}px`);
         canvasRef.current.style.setProperty('--mouse-y', `${e.clientY - rect.top}px`);
       }
-      if (!isPanning) return;
-      const dx = e.clientX - lastMousePos.current.x;
-      const dy = e.clientY - lastMousePos.current.y;
-      setCamera((prev) => ({ ...prev, x: prev.x + dx, y: prev.y + dy }));
-      lastMousePos.current = { x: e.clientX, y: e.clientY };
+      
+      if (isPanning) {
+        const dx = e.clientX - lastMousePos.current.x;
+        const dy = e.clientY - lastMousePos.current.y;
+        setCamera((prev) => ({ ...prev, x: prev.x + dx, y: prev.y + dy }));
+        lastMousePos.current = { x: e.clientX, y: e.clientY };
+      } else if (isDrawing && activeTool === 'highlighter') {
+        const coords = getCanvasCoords(e.clientX, e.clientY);
+        setCurrentStroke(prev => [...prev, coords]);
+      }
     },
-    [isPanning]
+    [isPanning, isDrawing, activeTool, getCanvasCoords]
   );
 
-  const handleMouseUp = useCallback(() => setIsPanning(false), []);
-
-  const runFlow = useCallback(async () => {
-    if (!layout || graphStatus === 'running') return;
-
-    const store = useWorkflowStore.getState();
-    store.setGraphStatus('running');
-
-    // Reset execution
-    const nodes = Object.values(layout).map(n => n.id);
-    store.resetExecution(nodes);
-    store.setGraphStatus('running'); // keep it running post-reset
-    
-    for (let pIdx = 0; pIdx < WORKFLOW_PHASES.length; pIdx++) {
-      const phase = WORKFLOW_PHASES[pIdx];
-      const nextPhase = WORKFLOW_PHASES[pIdx + 1];
-      
-      const phaseNodes = phase.categories.map(c => `${phase.id}::${c}`);
-      
-      // Reveal the phase's nodes through animation state
-      const currentActive = useWorkflowStore.getState().animationState.activeNodes;
-      store.setAnimationState({ activeNodes: [...currentActive, ...phaseNodes] });
-      
-      // Simulate running them (fade appealing)
-      for (const nId of phaseNodes) {
-        store.setNodeState(nId, 'running');
-        await new Promise(r => setTimeout(r, 600)); // Delay for scanning effect
-        store.setNodeState(nId, 'completed');
-      }
-      
-      if (nextPhase) {
-        setPhaseOverlay({ phase: pIdx + 1, phaseName: phase.label, nextPhaseName: nextPhase.label });
-        await new Promise(r => setTimeout(r, 2000));
-        setPhaseOverlay(null);
+  const handleMouseUp = useCallback(() => {
+    if (isPanning) setIsPanning(false);
+    if (isDrawing) {
+      setIsDrawing(false);
+      if (currentStroke && currentStroke.length > 0) {
+        const strokeId = Date.now();
+        setStrokes(prev => [...prev, { id: strokeId, points: currentStroke }]);
+        setCurrentStroke(null);
+        
+        setTimeout(() => {
+          setStrokes(prev => prev.filter(s => s.id !== strokeId));
+        }, 2500);
       }
     }
+  }, [isPanning, isDrawing, currentStroke]);
+
+  const runCurrentPhase = useCallback(async () => {
+    if (!layout || graphStatus === 'running') return;
+    const store = useWorkflowStore.getState();
     
-    useWorkflowStore.getState().setGraphStatus('completed');
+    // Check if prompt exists
+    if (!projectPrompt || projectPrompt.trim() === '') {
+      alert("Please enter a custom project directive in the top bar first!");
+      return;
+    }
 
-    // CONFETTI EXPLOSION!
-    const duration = 2000;
-    const end = Date.now() + duration;
+    store.setGraphStatus('running');
+    
+    const phase = WORKFLOW_PHASES[currentPhaseIndex];
+    if (!phase) {
+      store.setGraphStatus('completed');
+      return; // end of flow
+    }
 
-    (function frame() {
-      confetti({
-        particleCount: 8,
-        angle: 60,
-        spread: 70,
-        origin: { x: 0 },
-        colors: ['#46B1FF', '#CEA3FF', '#DEF767']
-      });
-      confetti({
-        particleCount: 8,
-        angle: 120,
-        spread: 70,
-        origin: { x: 1 },
-        colors: ['#A259FF', '#DEF767', '#ffffff']
-      });
+    const nextPhase = WORKFLOW_PHASES[currentPhaseIndex + 1];
+    const phaseNodes = phase.categories.map(c => `${phase.id}::${c}`);
+    
+    // Reveal visually 
+    const currentActive = store.animationState.activeNodes;
+    store.setAnimationState({ activeNodes: [...currentActive, ...phaseNodes] });
 
-      if (Date.now() < end) {
-        requestAnimationFrame(frame);
+    // NEURAL BRIDGE
+    let neuralContext = '';
+    if (currentPhaseIndex > 0) {
+      const prevPhase = WORKFLOW_PHASES[currentPhaseIndex - 1];
+      const prevPhaseNodes = prevPhase.categories.map(c => `${prevPhase.id}::${c}`);
+      const currentResults = store.nodeResults || {};
+      neuralContext = prevPhaseNodes
+        .map(id => currentResults[id]?.content)
+        .filter(Boolean)
+        .join('\n\n---\n\n');
+    }
+
+    // Phase Execution
+    for (const nId of phaseNodes) {
+      store.setNodeState(nId, 'running');
+      
+      const nodeCategory = nId.split('::')[1];
+      const agentData = {
+        id: nId,
+        phaseLabel: phase.label,
+        categoryName: nodeCategory,
+        name: layout[nId]?.category?.name || nodeCategory
+      };
+
+      try {
+        const taskObj = `Project directive: ${store.projectPrompt}\n\nExecute agentic objective for ${agentData.name} within the ${agentData.phaseLabel} architecture phase. Provide deep expert analysis based on the project directive.`;
+        const result = await callLLM(taskObj, agentData, neuralContext);
+        store.setNodeResult(nId, result);
+      } catch (err) {
+        console.error(`[${nId}] Error:`, err);
       }
-    }());
 
-  }, [layout, graphStatus]);
+      store.setNodeState(nId, 'completed');
+    }
+    
+    store.setGraphStatus('ready'); // Wait for human logic
+
+    if (nextPhase) {
+      store.setCurrentPhaseIndex(currentPhaseIndex + 1);
+      setPhaseOverlay({ phase: currentPhaseIndex + 1, phaseName: phase.label, nextPhaseName: nextPhase.label });
+      await new Promise(r => setTimeout(r, 2000));
+      setPhaseOverlay(null);
+    } else {
+      store.setGraphStatus('completed');
+      // CONFETTI EXPLOSION!
+      const duration = 2000;
+      const end = Date.now() + duration;
+
+      (function frame() {
+        confetti({ particleCount: 8, angle: 60, spread: 70, origin: { x: 0 }, colors: ['#46B1FF', '#CEA3FF', '#DEF767'] });
+        confetti({ particleCount: 8, angle: 120, spread: 70, origin: { x: 1 }, colors: ['#A259FF', '#DEF767', '#ffffff'] });
+        if (Date.now() < end) requestAnimationFrame(frame);
+      }());
+    }
+  }, [layout, graphStatus, currentPhaseIndex, projectPrompt]);
+
+  const rebootSequence = () => {
+    const store = useWorkflowStore.getState();
+    const nodes = Object.values(layout).map(n => n.id);
+    store.resetExecution(nodes);
+    store.setProjectPrompt('');
+  };
 
   if (graphStatus === 'error') {
     return (
@@ -181,7 +264,7 @@ const App = () => {
         <h1 className="text-2xl font-bold tracking-widest mb-2 font-display">GRAPH VALIDATION FAILED</h1>
         <p className="text-slate-400 font-mono text-sm">{initError}</p>
       </div>
-    )
+    );
   }
 
   if (!layout) {
@@ -211,19 +294,44 @@ const App = () => {
         </div>
       )}
 
-      {/* Floating Control specifically for running the flow */}
-      <div className="absolute top-[180px] left-6 z-40 bg-[#0c0c14] border border-[#2e2e42] p-1.5 rounded-xl flex shadow-2xl">
-         <button 
-           onClick={runFlow}
-           disabled={graphStatus === 'running'}
-           className={`flex items-center gap-2 text-xs font-bold py-3 px-6 rounded-lg transition-colors border shadow-inner ${graphStatus === 'completed' ? 'bg-[#DEF767] hover:bg-[#DEF767]/80 text-black border-[#DEF767]/50' : 'bg-[#1a1a24] hover:bg-[#A259FF] text-white border-white/5'}`}
-         >
-           {graphStatus === 'completed' ? <><RefreshCw size={14} /> REBOOT SEQUENCE</> : <><Play size={14} /> EXECUTABLE: RUN</>}
-         </button>
+      {/* ── Floating Command Center (Project Prompt) ── */}
+      <div className="absolute top-[80px] left-1/2 -translate-x-1/2 z-40 w-full max-w-4xl px-8 pointer-events-none">
+        <div className="flex flex-col items-center gap-2 pointer-events-auto bg-[#0c0c14]/80 backdrop-blur-xl border border-white/10 rounded-2xl p-4 shadow-2xl">
+          <div className="flex items-center gap-4 w-full">
+             <input
+               value={projectPrompt}
+               onChange={(e) => setProjectPrompt(e.target.value)}
+               placeholder="Enter your Project Directive... (e.g., A minimalist habit tracker app)"
+               className="flex-1 bg-black/60 border border-transparent rounded-xl px-4 py-3 outline-none focus:border-[#46B1FF]/50 transition-colors text-white text-sm shadow-inner placeholder:text-slate-500 font-secondary"
+               disabled={graphStatus === 'running'}
+             />
+             <button 
+               onClick={graphStatus === 'completed' ? rebootSequence : runCurrentPhase}
+               disabled={graphStatus === 'running' || !projectPrompt}
+               className={`px-6 py-3 rounded-xl font-bold flex items-center gap-3 transition-colors ${
+                 graphStatus === 'completed' 
+                   ? 'bg-[#DEF767] hover:bg-[#DEF767]/80 text-black' 
+                   : projectPrompt && graphStatus !== 'running' 
+                     ? 'bg-gradient-to-r from-[#46B1FF] to-[#A259FF] hover:opacity-80 text-white shadow-lg' 
+                     : 'bg-white/5 text-slate-500 cursor-not-allowed'
+               }`}
+             >
+               {graphStatus === 'completed' ? (
+                 <><RefreshCw size={16} /> Reboot AI Pipeline</>
+               ) : graphStatus === 'running' ? (
+                 <><RefreshCw size={16} className="animate-spin" /> Running Phase {currentPhaseIndex + 1}...</>
+               ) : (
+                 <><Play size={16} fill="currentColor" /> Execute Phase {currentPhaseIndex + 1}</>
+               )}
+             </button>
+          </div>
+        </div>
       </div>
       
       <FlowControls setCamera={setCamera} />
+      <ToolDock activeTool={activeTool} setActiveTool={setActiveTool} openTemplates={() => alert('Templates feature coming soon')} />
 
+      {/* ── Infinite Node Canvas ── */}
       <div className="flex flex-1 overflow-hidden relative">
         <div
           ref={canvasRef}
@@ -244,34 +352,36 @@ const App = () => {
               willChange: 'transform',
             }}
           >
-            {/* ── Background Phase Labels ── */}
+            {/* Background Phase Labels */}
             {WORKFLOW_PHASES.map((p, idx) => {
-              // Find first node of phase to get X position. Hacky but effective for background string.
               const firstNodeId = `${p.id}::${p.categories[0]}`;
               const firstNodeLayout = layout[firstNodeId];
               if (!firstNodeLayout) return null;
 
               return (
-                <div
-                  key={idx}
-                  className="absolute pointer-events-none phase-label"
-                  style={{
-                    left: firstNodeLayout.x + 70, // center it
-                    top: 100, // Top of canvas
-                    transform: 'translate(-50%, -50%)',
-                  }}
-                >
-                  <div className="text-2xl font-black tracking-[0.4em] mb-1 text-center" style={{ opacity: 0.6 }}>
-                    {p.label}
+                <React.Fragment key={idx}>
+                  <div
+                    className="absolute pointer-events-none phase-label"
+                    style={{
+                      left: firstNodeLayout.x + 70, // center it
+                      top: 100, // Top of canvas
+                      transform: 'translate(-50%, -50%)',
+                    }}
+                  >
+                    <div className="text-2xl font-black tracking-[0.4em] mb-1 text-center" style={{ opacity: 0.6 }}>
+                      {p.label}
+                    </div>
+                    <div className="text-[9px] font-bold tracking-[0.6em] uppercase text-center mx-auto" style={{ opacity: 0.4, paddingLeft: '0.6em' }}>
+                      {p.subtitle}
+                    </div>
                   </div>
-                  <div className="text-[9px] font-bold tracking-[0.6em] uppercase text-center mx-auto" style={{ opacity: 0.4, paddingLeft: '0.6em' }}>
-                    {p.subtitle}
-                  </div>
-                </div>
+                  
+                  <PhaseSummaryBox phase={p} x={firstNodeLayout.x + 70} y={firstNodeLayout.y + 360} />
+                </React.Fragment>
               );
             })}
 
-            {/* ── Edges / Wires ── */}
+            {/* Edges / Wires */}
             <svg className="absolute inset-0 pointer-events-none w-full h-full overflow-visible">
               <defs>
                 <marker id="arrow-lime" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="4" markerHeight="4" orient="auto-start-reverse">
@@ -279,19 +389,35 @@ const App = () => {
                 </marker>
               </defs>
 
+              {strokes.map((stroke) => (
+                <motion.polyline 
+                  key={`stroke-${stroke.id}`} 
+                  points={stroke.points.map(p => `${p.x},${p.y}`).join(' ')} 
+                  stroke="#A259FF" strokeWidth="24" strokeLinecap="round" strokeLinejoin="round" 
+                  fill="none" 
+                  initial={{ opacity: 0.25 }}
+                  animate={{ opacity: 0 }}
+                  transition={{ duration: 0.5, delay: 2.0 }}
+                  style={{ filter: 'blur(3px)' }} 
+                />
+              ))}
+              {currentStroke && (
+                <polyline 
+                  points={currentStroke.map(p => `${p.x},${p.y}`).join(' ')} 
+                  stroke="#A259FF" strokeWidth="24" strokeLinecap="round" strokeLinejoin="round" 
+                  fill="none" opacity="0.25" style={{ filter: 'blur(3px)' }} 
+                />
+              )}
+
               {bundledEdges.map((edge, idx) => {
                 const fromLayout = layout[edge.from];
                 const toLayout = layout[edge.to];
                 if (!fromLayout || !toLayout) return null;
 
-                // Port Anchor Math based on standard NodeContainer sizes
-                const fromAnchor = { x: fromLayout.x + 140, y: fromLayout.y + 70 }; // Right center
-                const toAnchor = { x: toLayout.x, y: toLayout.y + 70 }; // Left center
+                const fromAnchor = { x: fromLayout.x + 140, y: fromLayout.y + 70 };
+                const toAnchor = { x: toLayout.x, y: toLayout.y + 70 };
 
                 const pathString = computeEdgePath(fromAnchor, toAnchor, edge.routeConfig);
-                
-                // An edge is active if the node it originates from has RUN or COMPLETED.
-                // This triggers the SVG drawing animation sequence.
                 const isActive = nodeStates[edge.from] === 'running' || nodeStates[edge.from] === 'completed';
 
                 return (
@@ -306,64 +432,137 @@ const App = () => {
               })}
             </svg>
 
-            {/* ── Agent Nodes ── */}
+            {/* Agent Nodes */}
             {Object.values(layout).map((node) => {
               const animState = useWorkflowStore.getState().animationState;
-              const isVisible = animState.activeNodes.includes(node.id) || graphStatus === 'ready' || graphStatus === 'completed'; 
+              const isVisible = animState.activeNodes.includes(node.id) || graphStatus === 'ready' || graphStatus === 'completed' || graphStatus === 'running'; 
+              
+              // Only slightly fade nodes that are further out in future phases
+              const parsePhaseIdx = WORKFLOW_PHASES.findIndex(p => p.id === node.id.split('::')[0]);
+              const isPendingPhase = parsePhaseIdx > currentPhaseIndex;
+              
               return (
-                <NodeContainer
-                  key={node.id}
-                  node={node}
-                  state={nodeStates[node.id] || 'idle'}
-                  onClick={() => selectNode(node.id)}
-                  isVisible={isVisible}
-                />
+                <div key={node.id} style={{ opacity: isPendingPhase ? 0.5 : 1 }} className="transition-opacity duration-700">
+                  <NodeContainer
+                    node={node}
+                    state={nodeStates[node.id] || 'idle'}
+                    onClick={() => selectNode(node.id)}
+                    isVisible={isVisible}
+                  />
+                </div>
               )
             })}
+            {/* Sticky Notes */}
+            {stickyNotes.map(note => (
+              <div key={`sticky-${note.id}`} 
+                className="absolute sticky-note p-3 rounded-xl z-20 transition-all font-secondary flex flex-col group shadow-xl"
+                onClick={() => selectNode(`sticky-${note.id}`)}
+                style={{
+                  left: note.x - 110, top: note.y - 80, width: 220, height: 160,
+                  background: 'rgba(26, 26, 46, 0.85)',
+                  border: '1px solid rgba(162, 89, 255, 0.5)',
+                  backdropFilter: 'blur(12px)',
+                  pointerEvents: activeTool === 'cursor' ? 'auto' : 'none',
+                  cursor: activeTool === 'cursor' ? 'pointer' : 'default',
+                  transform: selectedNodeId === `sticky-${note.id}` ? 'scale(1.02)' : 'scale(1)',
+                  boxShadow: selectedNodeId === `sticky-${note.id}` ? '0 0 25px rgba(162, 89, 255, 0.3)' : '0 0 15px rgba(162, 89, 255, 0.1)',
+                }}>
+                <div className="w-full h-1 bg-gradient-to-r from-[#A259FF] to-[#46B1FF] rounded-t-sm absolute top-0 left-0" />
+                
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setStickyNotes(prev => prev.filter(n => n.id !== note.id));
+                    if (selectedNodeId === `sticky-${note.id}`) {
+                      useWorkflowStore.getState().selectNode(null);
+                    }
+                  }}
+                  className="absolute top-2 right-2 p-1.5 rounded-lg bg-black/40 text-slate-400 hover:text-white hover:bg-[#ff4b4b] transition-all opacity-0 group-hover:opacity-100 z-50 shadow-md"
+                >
+                  <Trash2 size={14} />
+                </button>
+
+                <textarea 
+                  className="flex-1 w-full mt-2 bg-transparent outline-none resize-none text-slate-200 text-sm placeholder-slate-500 custom-scrollbar-neon"
+                  placeholder="Note insights here..."
+                  defaultValue={note.text}
+                  onMouseDown={e => e.stopPropagation()}
+                  onChange={(e) => {
+                    const newNotes = stickyNotes.map(n => n.id === note.id ? { ...n, text: e.target.value } : n);
+                    setStickyNotes(newNotes);
+                  }}
+                />
+              </div>
+            ))}
           </div>
         </div>
 
-        {/* ── Intelligence Layer Side Panel (Floating Glassmorphism) ── */}
+        {/* ── Intelligence Layer Output Sidebar ── */}
         <div 
-          className={`absolute right-0 top-0 h-full w-[360px] bg-[#0c0c14]/40 backdrop-blur-2xl border-l border-white/5 p-6 shadow-2xl transition-transform duration-500 z-50 ${selectedNodeId ? 'translate-x-0' : 'translate-x-full'}`}
+          className={`absolute right-0 top-0 h-full w-[460px] bg-[#0c0c14]/60 backdrop-blur-2xl border-l border-white/5 p-0 shadow-2xl transition-transform duration-500 z-50 flex flex-col ${selectedNodeId ? 'translate-x-0' : 'translate-x-full'}`}
         >
-           <div className="flex justify-between items-center mb-6">
-             <h2 className="font-bold text-xs uppercase tracking-widest text-slate-400">Intelligence Layer</h2>
-             <button onClick={() => selectNode(null)} className="text-slate-500 hover:text-white transition-colors">✕</button>
+           <div className="flex justify-between items-center p-6 border-b border-white/[0.04] bg-black/40">
+             <div>
+               <h2 className="font-bold text-[10px] uppercase tracking-widest text-[#46B1FF] mb-1">Delivered Asset Output</h2>
+               <span className="text-white font-black tracking-wide font-display text-lg">
+                 {selectedNodeId?.startsWith('sticky-') ? 'Sticky Note insight' : layout[selectedNodeId]?.category.name}
+               </span>
+             </div>
+             <button onClick={() => selectNode(null)} className="p-2 bg-white/5 rounded-full text-slate-500 hover:text-white hover:bg-white/10 transition-colors">✕</button>
            </div>
            
+           <div className="flex-1 overflow-y-auto custom-scrollbar p-6">
            {selectedNodeId ? (
-              <div className="animate-fade-in">
-                <h3 className="text-xl font-black tracking-wider text-slate-100 uppercase font-display">{layout[selectedNodeId]?.category.name}</h3>
-                <p className="text-sm text-slate-400 mt-3 leading-relaxed">{layout[selectedNodeId]?.category.description}</p>
-                
-                <div className="mt-8">
-                  <span className="text-[10px] text-[#A259FF] uppercase font-bold tracking-widest">Recommended Tools</span>
-                  <div className="flex flex-col gap-3 mt-4">
-                     {layout[selectedNodeId]?.category.tools.map(tid => {
-                       const toolInfo = TOOL_REGISTRY[tid];
-                       return (
-                         <div key={tid} className="bg-white/[0.03] hover:bg-white/[0.05] transition-colors border border-white/[0.05] p-4 rounded-xl cursor-pointer">
-                            <div className="flex justify-between items-start mb-1">
-                              <strong className="text-slate-200 text-sm tracking-wide">{toolInfo?.name || tid.toUpperCase()}</strong>
-                              {(toolInfo?.pricing === 'paid' || toolInfo?.pricing === 'freemium') && (
-                                <span className="text-[9px] bg-white/10 text-slate-300 px-2 py-0.5 rounded-full uppercase tracking-wider">{toolInfo.pricing}</span>
-                              )}
-                            </div>
-                            <p className="text-xs text-slate-500 line-clamp-2 mt-2">{toolInfo?.description}</p>
-                         </div>
-                       )
-                     })}
+               <div className="animate-fade-in flex flex-col h-full"> 
+                 {selectedNodeId.startsWith('sticky-') ? (
+                   <div className="flex-1 mt-4">
+                     <div className="p-4 rounded-xl bg-white/[0.02] border border-white/[0.05] shadow-inner mb-4">
+                       <p className="text-sm text-slate-200 leading-relaxed font-secondary whitespace-pre-wrap">
+                         {stickyNotes.find(n => `sticky-${n.id}` === selectedNodeId)?.text || 'Empty Sticky Note'}
+                       </p>
+                     </div>
+                     <p className="text-[10px] text-slate-500 uppercase tracking-widest">Update note on the canvas Toolkit</p>
+                   </div>
+                 ) : nodeResults && nodeResults[selectedNodeId]?.ui ? (
+                   <div className="flex-1 w-full relative">
+                      <div dangerouslySetInnerHTML={{ __html: nodeResults[selectedNodeId].ui }} />
+                   </div>
+                 ) : (
+                   <div className="flex-1 mt-4">
+                    <div className="p-4 rounded-xl bg-white/[0.02] border border-white/[0.05] mb-8 shadow-inner">
+                       <p className="text-sm text-slate-400 leading-relaxed font-light">{layout[selectedNodeId]?.category.description}</p>
+                    </div>
+                    
+                    <span className="text-[10px] text-[#A259FF] uppercase font-bold tracking-widest mb-4 block">Recommended External APIs</span>
+                    <div className="flex flex-col gap-3">
+                       {layout[selectedNodeId]?.category.tools.map(tid => {
+                         const toolInfo = TOOL_REGISTRY[tid];
+                         return (
+                           <div key={tid} className="bg-gradient-to-r from-white/[0.03] to-transparent border border-white/[0.05] p-4 rounded-xl cursor-default transition-all group">
+                              <div className="flex justify-between items-start mb-1">
+                                <strong className="text-slate-200 text-sm tracking-wide group-hover:text-[#46B1FF] transition-colors">{toolInfo?.name || tid.toUpperCase()}</strong>
+                                {toolInfo?.pricing && (
+                                  <span className="text-[9px] bg-black/40 border border-white/10 text-slate-400 px-2.5 py-0.5 rounded-md uppercase tracking-wider">{toolInfo.pricing}</span>
+                                )}
+                              </div>
+                              <p className="text-xs text-slate-500 line-clamp-2 mt-2 leading-relaxed">{toolInfo?.description}</p>
+                           </div>
+                         )
+                       })}
+                    </div>
+                    <div className="mt-12 flex justify-center pb-8 border-b border-white/[0.02]">
+                       <p className="text-[9px] text-slate-600 uppercase tracking-widest text-center px-4">Execute AI Pipeline Phase to generate dynamic output for this node.</p>
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
            ) : null}
+           </div>
         </div>
       </div>
       <FlowFooter flowStatus={graphStatus === 'loading' ? 'running' : 'idle'} logs={[]} completedCount={0} totalCount={16} />
     </div>
   );
-
 };
 
 export default App;

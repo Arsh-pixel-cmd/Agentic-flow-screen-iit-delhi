@@ -15,16 +15,25 @@ export const useWorkflowStore = create((set, get) => ({
   setAnimationState: (newState) => set((state) => ({ 
     animationState: { ...state.animationState, ...newState } 
   })),
+  // Master Project Input
+  projectPrompt: '',
+  setProjectPrompt: (prompt) => set({ projectPrompt: prompt }),
 
   // Execution State
+  currentPhaseIndex: 0,
+  setCurrentPhaseIndex: (idx) => set({ currentPhaseIndex: idx }),
   nodeStates: {}, // Record<nodeId, 'idle' | 'running' | 'completed'>
+  nodeResults: {}, // Record<nodeId, { content, ui }>
   setNodeState: (nodeId, state) => set((s) => ({
     nodeStates: { ...s.nodeStates, [nodeId]: state }
+  })),
+  setNodeResult: (nodeId, result) => set((s) => ({
+    nodeResults: { ...s.nodeResults, [nodeId]: result }
   })),
   resetExecution: (nodes) => {
     const freshStates = {};
     nodes.forEach(n => { freshStates[n] = 'idle'; });
-    set({ nodeStates: freshStates, revealedPhases: [], graphStatus: 'ready', flowStatus: 'idle', animationState: { phase: 'idle', activeNodes: [], queuedTransitions: [] } });
+    set({ nodeStates: freshStates, nodeResults: {}, currentPhaseIndex: 0, revealedPhases: [], graphStatus: 'ready', flowStatus: 'idle', animationState: { phase: 'idle', activeNodes: [], queuedTransitions: [] } });
   },
 
   // Layout Constraints

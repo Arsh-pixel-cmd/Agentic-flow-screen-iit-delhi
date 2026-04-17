@@ -4,6 +4,7 @@ import {
   Sparkles, Layers, Box, Palette, ShieldCheck, RefreshCw, FileText, Rocket,
 } from 'lucide-react';
 import StatusBadge from './StatusBadge';
+import ThinkingTerminal from './ThinkingTerminal';
 
 const ICON_MAP = {
   Search, Eye, Users, BookOpen, User, Compass, Target, Lightbulb,
@@ -41,6 +42,7 @@ const NodeContainer = ({ node, state, onClick, isVisible = true }) => {
       }}
       onClick={onClick}
     >
+      <ThinkingTerminal node={node} isRunning={state === 'running'} />
       <div className="flex flex-col items-center justify-center h-full p-4 gap-3">
         {/* Icon Unit */}
         <div
