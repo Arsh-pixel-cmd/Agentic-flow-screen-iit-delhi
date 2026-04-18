@@ -1,16 +1,32 @@
-# React + Vite
+# Agentic Flow Visualization 🧠
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+**Agentic Flow** is a high-fidelity, interactive web application that provides a stunning visual representation of complex AI agent workflows. Built with a premium dark-theme design philosophy, it features an infinite canvas where modular AI agents (nodes) and their execution paths (edges) are dynamically mapped out over a double-diamond schema. 
 
-Currently, two official plugins are available:
+## ✨ Key Features
+- **Infinite Interactive Canvas:** A draggable, zoomable grid viewport powered by custom SVG edge routing.
+- **Dynamic Layout Engine:** Programmatically computes node positions and edge routes based on state.
+- **Micro-animations & Visualizations:** Includes glowing data threads, custom confetti celebrations upon completion, and glassmorphism ui overlays.
+- **Intelligence Layer Panel:** Clickable agent nodes reveal an elegant side panel detailing the specific tools, roles, and schema logic associated with each AI agent.
+- **Modern Tech Stack:** Built with React 19, Vite, Tailwind CSS 4, and Zustand for robust global state management.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## 🚀 Getting Started
 
-## React Compiler
+1. **Install dependencies:**
+   ```bash
+   npm install
+   ```
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+2. **Run the development server:**
+   ```bash
+   npm run dev
+   ```
 
-## Expanding the ESLint configuration
+3. **Open the application:**
+   Navigate to the local URL provided by Vite (usually `http://localhost:5173`).
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+## 🛠️ Built With
+- [React](https://reactjs.org/)
+- [Vite](https://vitejs.dev/)
+- [Tailwind CSS](https://tailwindcss.com/)
+- [Zustand](https://github.com/pmndrs/zustand)
+- [Lucide React](https://lucide.dev/)
