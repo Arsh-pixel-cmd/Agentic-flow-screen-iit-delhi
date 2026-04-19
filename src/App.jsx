@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Sparkles, AlertTriangle, Play, RefreshCw, Trash2 } from 'lucide-react';
+import { Sparkles, AlertTriangle, Play, RefreshCw, Trash2, Paperclip, X, FileText, Activity, Folder } from 'lucide-react';
 import confetti from 'canvas-confetti';
+// eslint-disable-next-line no-unused-vars
 import { motion } from 'framer-motion';
 
 // Core Schema & Logic
@@ -8,7 +9,7 @@ import { WORKFLOW_PHASES, EDGES, TOOL_REGISTRY } from './data/schema';
 import { validateGraph } from './lib/graphValidator';
 import { computeLayout } from './lib/layoutEngine';
 import { computeEdgePath, bundleEdges } from './lib/edgeRouter';
-import { useWorkflowStore, selectActiveNodeId, selectRevealedPhases } from './lib/store';
+import { useWorkflowStore, selectActiveNodeId } from './lib/store';
 import { callLLM } from './lib/llm';
 
 // Components
@@ -18,6 +19,11 @@ import FlowControls from './components/FlowControls';
 import NodeContainer from './components/NodeContainer';
 import PhaseSummaryBox from './components/PhaseSummaryBox';
 import ToolDock from './components/ToolDock';
+import OutputScreen from './components/OutputScreen';
+import BuilderCanvas from './components/BuilderCanvas';
+import BuilderSidebar from './components/BuilderSidebar';
+import TemplatesView from './components/TemplatesView';
+import { useBuilderStore } from './lib/builderStore';
 
 const App = () => {
   const [initError, setInitError] = useState(null);
@@ -28,20 +34,19 @@ const App = () => {
   const selectedNodeId = useWorkflowStore(selectActiveNodeId);
   const selectNode = useWorkflowStore(state => state.selectNode);
   const nodeStates = useWorkflowStore(state => state.nodeStates);
+  
+  const viewMode = useBuilderStore(state => state.viewMode);
   const nodeResults = useWorkflowStore(state => state.nodeResults);
   const projectPrompt = useWorkflowStore(state => state.projectPrompt);
   const setProjectPrompt = useWorkflowStore(state => state.setProjectPrompt);
   const currentPhaseIndex = useWorkflowStore(state => state.currentPhaseIndex);
-  const setCurrentPhaseIndex = useWorkflowStore(state => state.setCurrentPhaseIndex);
+  const projectAttachment = useWorkflowStore(state => state.projectAttachment);
+  const setProjectAttachment = useWorkflowStore(state => state.setProjectAttachment);
+  const fileInputRef = useRef(null);
 
   const [phaseOverlay, setPhaseOverlay] = useState(null);
+  const [showOutputScreen, setShowOutputScreen] = useState(false);
 
-  // NEURAL SEQUENCE OBJECT - Pre-initialized context
-  const neuralSequence = {
-    projectContext: '',
-    phaseHistory: [],
-    accumulatedKnowledge: '',
-  };
 
   // Canvas Viewport logic
   const [camera, setCamera] = useState({ x: 100, y: 60, zoom: 0.55 });
@@ -55,6 +60,10 @@ const App = () => {
   const [strokes, setStrokes] = useState([]);
   const [currentStroke, setCurrentStroke] = useState(null);
   const [isDrawing, setIsDrawing] = useState(false);
+  const [canvasLocked, setCanvasLocked] = useState(false);
+  const [textLabels, setTextLabels] = useState([]);
+  const [draggingAppElement, setDraggingAppElement] = useState(null);
+  const [resizingAppElement, setResizingAppElement] = useState(null);
 
   // Boot validation
   useEffect(() => {
@@ -89,10 +98,20 @@ const App = () => {
     const onWheel = (e) => {
       if (e.ctrlKey || e.metaKey) {
         e.preventDefault();
-        setCamera((prev) => ({
-          ...prev,
-          zoom: Math.min(Math.max(prev.zoom - e.deltaY * 0.001, 0.15), 2),
-        }));
+        setCamera((prev) => {
+          const newZoom = Math.min(Math.max(prev.zoom - e.deltaY * 0.0004, 0.15), 2);
+          const zoomRatio = newZoom / prev.zoom;
+
+          const rect = canvas.getBoundingClientRect();
+          const mouseX = e.clientX - rect.left;
+          const mouseY = e.clientY - rect.top;
+
+          return {
+            zoom: newZoom,
+            x: mouseX - (mouseX - prev.x) * zoomRatio,
+            y: mouseY - (mouseY - prev.y) * zoomRatio,
+          };
+        });
       } else {
         setCamera((prev) => ({
           ...prev,
@@ -117,20 +136,32 @@ const App = () => {
     if (e.target.closest('.n8n-node') || e.target.closest('.sticky-note')) return;
 
     if (activeTool === 'cursor') {
-      if (e.button === 1 || (e.button === 0 && e.altKey) || e.target.id === 'canvas-bg') {
+      if (!canvasLocked && (e.button === 1 || (e.button === 0 && e.altKey) || e.target.id === 'canvas-bg')) {
         setIsPanning(true);
         lastMousePos.current = { x: e.clientX, y: e.clientY };
       }
     } else if (activeTool === 'sticky') {
       const coords = getCanvasCoords(e.clientX, e.clientY);
-      setStickyNotes(prev => [...prev, { id: Date.now(), x: coords.x, y: coords.y, text: '' }]);
+      setStickyNotes(prev => [...prev, { id: Date.now(), x: coords.x, y: coords.y, text: '', color: '#A259FF' }]);
+      setActiveTool('cursor');
+    } else if (activeTool === 'text') {
+      const coords = getCanvasCoords(e.clientX, e.clientY);
+      setTextLabels(prev => [...prev, { id: Date.now(), x: coords.x, y: coords.y, text: '' }]);
       setActiveTool('cursor');
     } else if (activeTool === 'highlighter') {
       setIsDrawing(true);
       const coords = getCanvasCoords(e.clientX, e.clientY);
       setCurrentStroke([coords]);
     }
-  }, [activeTool, getCanvasCoords]);
+    if (activeTool === 'cursor') {
+      e.stopPropagation();
+      const coords = getCanvasCoords(e.clientX, e.clientY);
+      if (note) {
+        selectNode(`sticky-${note.id}`);
+        setDraggingAppElement({ type: 'sticky', id: note.id, startX: note.x, startY: note.y, startMouseX: coords.x, startMouseY: coords.y });
+      }
+    }
+  }, [activeTool, getCanvasCoords, selectNode]);
 
   const handleMouseMove = useCallback(
     (e) => {
@@ -140,6 +171,24 @@ const App = () => {
         canvasRef.current.style.setProperty('--mouse-y', `${e.clientY - rect.top}px`);
       }
       
+      if (draggingAppElement) {
+        const coords = getCanvasCoords(e.clientX, e.clientY);
+        const dx = coords.x - draggingAppElement.startMouseX;
+        const dy = coords.y - draggingAppElement.startMouseY;
+        if (draggingAppElement.type === 'sticky') {
+          setStickyNotes(prev => prev.map(n => n.id === draggingAppElement.id ? { ...n, x: draggingAppElement.startX + dx, y: draggingAppElement.startY + dy } : n));
+        }
+      }
+
+      if (resizingAppElement) {
+        const coords = getCanvasCoords(e.clientX, e.clientY);
+        const newWidth = Math.max(120, coords.x - resizingAppElement.elemX);
+        const newHeight = Math.max(120, coords.y - resizingAppElement.elemY);
+        if (resizingAppElement.type === 'sticky') {
+           setStickyNotes(prev => prev.map(n => n.id === resizingAppElement.id ? { ...n, width: newWidth, height: newHeight } : n));
+        }
+      }
+
       if (isPanning) {
         const dx = e.clientX - lastMousePos.current.x;
         const dy = e.clientY - lastMousePos.current.y;
@@ -154,6 +203,8 @@ const App = () => {
   );
 
   const handleMouseUp = useCallback(() => {
+    if (draggingAppElement) setDraggingAppElement(null);
+    if (resizingAppElement) setResizingAppElement(null);
     if (isPanning) setIsPanning(false);
     if (isDrawing) {
       setIsDrawing(false);
@@ -169,85 +220,79 @@ const App = () => {
     }
   }, [isPanning, isDrawing, currentStroke]);
 
-  const runCurrentPhase = useCallback(async () => {
+  const runFullPipeline = useCallback(async () => {
     if (!layout || graphStatus === 'running') return;
     const store = useWorkflowStore.getState();
     
-    // Check if prompt exists
     if (!projectPrompt || projectPrompt.trim() === '') {
       alert("Please enter a custom project directive in the top bar first!");
       return;
     }
 
     store.setGraphStatus('running');
-    
-    const phase = WORKFLOW_PHASES[currentPhaseIndex];
-    if (!phase) {
-      store.setGraphStatus('completed');
-      return; // end of flow
-    }
+    store.resetExecution(Object.keys(layout)); 
 
-    const nextPhase = WORKFLOW_PHASES[currentPhaseIndex + 1];
-    const phaseNodes = phase.categories.map(c => `${phase.id}::${c}`);
-    
-    // Reveal visually 
-    const currentActive = store.animationState.activeNodes;
-    store.setAnimationState({ activeNodes: [...currentActive, ...phaseNodes] });
-
-    // NEURAL BRIDGE
-    let neuralContext = '';
-    if (currentPhaseIndex > 0) {
-      const prevPhase = WORKFLOW_PHASES[currentPhaseIndex - 1];
-      const prevPhaseNodes = prevPhase.categories.map(c => `${prevPhase.id}::${c}`);
-      const currentResults = store.nodeResults || {};
-      neuralContext = prevPhaseNodes
-        .map(id => currentResults[id]?.content)
-        .filter(Boolean)
-        .join('\n\n---\n\n');
-    }
-
-    // Phase Execution
-    for (const nId of phaseNodes) {
-      store.setNodeState(nId, 'running');
+    for (let i = 0; i < WORKFLOW_PHASES.length; i++) {
+      const phase = WORKFLOW_PHASES[i];
+      store.setCurrentPhaseIndex(i);
       
-      const nodeCategory = nId.split('::')[1];
-      const agentData = {
-        id: nId,
-        phaseLabel: phase.label,
-        categoryName: nodeCategory,
-        name: layout[nId]?.category?.name || nodeCategory
-      };
+      const phaseNodes = phase.categories.map(c => `${phase.id}::${c}`);
+      const currentActive = store.animationState.activeNodes;
+      store.setAnimationState({ activeNodes: [...currentActive, ...phaseNodes] });
 
-      try {
-        const taskObj = `Project directive: ${store.projectPrompt}\n\nExecute agentic objective for ${agentData.name} within the ${agentData.phaseLabel} architecture phase. Provide deep expert analysis based on the project directive.`;
-        const result = await callLLM(taskObj, agentData, neuralContext);
-        store.setNodeResult(nId, result);
-      } catch (err) {
-        console.error(`[${nId}] Error:`, err);
+      let neuralContext = '';
+      if (i > 0) {
+        const prevPhase = WORKFLOW_PHASES[i - 1];
+        const prevPhaseNodes = prevPhase.categories.map(c => `${prevPhase.id}::${c}`);
+        const currentResults = store.nodeResults || {};
+        neuralContext = prevPhaseNodes
+          .map(id => currentResults[id]?.content)
+          .filter(Boolean)
+          .join('\n\n---\n\n');
       }
 
-      store.setNodeState(nId, 'completed');
+      await Promise.all(phaseNodes.map(async (nId) => {
+        store.setNodeState(nId, 'running');
+        const nodeCategory = nId.split('::')[1];
+        const agentData = {
+          id: nId,
+          phaseLabel: phase.label,
+          categoryName: nodeCategory,
+          name: layout[nId]?.category?.name || nodeCategory
+        };
+
+        try {
+          const taskObj = `Project directive: ${store.projectPrompt}\n\nExecute agentic objective for ${agentData.name} within the ${agentData.phaseLabel} architecture phase. Provide deep expert analysis based on the project directive.`;
+          const result = await callLLM(taskObj, agentData, neuralContext, store.projectAttachment);
+          store.setNodeResult(nId, result);
+        } catch (err) {
+          console.error(`[${nId}] Error:`, err);
+        }
+        store.setNodeState(nId, 'completed');
+      }));
+
+      if (i < WORKFLOW_PHASES.length - 1) {
+        setPhaseOverlay({ 
+          phase: i + 1, 
+          phaseName: phase.label, 
+          nextPhaseName: WORKFLOW_PHASES[i + 1].label 
+        });
+        await new Promise(r => setTimeout(r, 2000));
+        setPhaseOverlay(null);
+      }
     }
+
+    store.setGraphStatus('completed');
+    const duration = 2000;
+    const end = Date.now() + duration;
+
+    (function frame() {
+      confetti({ particleCount: 8, angle: 60, spread: 70, origin: { x: 0 }, colors: ['#46B1FF', '#CEA3FF', '#DEF767'] });
+      confetti({ particleCount: 8, angle: 120, spread: 70, origin: { x: 1 }, colors: ['#A259FF', '#DEF767', '#ffffff'] });
+      if (Date.now() < end) requestAnimationFrame(frame);
+    }());
     
-    store.setGraphStatus('ready'); // Wait for human logic
-
-    if (nextPhase) {
-      store.setCurrentPhaseIndex(currentPhaseIndex + 1);
-      setPhaseOverlay({ phase: currentPhaseIndex + 1, phaseName: phase.label, nextPhaseName: nextPhase.label });
-      await new Promise(r => setTimeout(r, 2000));
-      setPhaseOverlay(null);
-    } else {
-      store.setGraphStatus('completed');
-      // CONFETTI EXPLOSION!
-      const duration = 2000;
-      const end = Date.now() + duration;
-
-      (function frame() {
-        confetti({ particleCount: 8, angle: 60, spread: 70, origin: { x: 0 }, colors: ['#46B1FF', '#CEA3FF', '#DEF767'] });
-        confetti({ particleCount: 8, angle: 120, spread: 70, origin: { x: 1 }, colors: ['#A259FF', '#DEF767', '#ffffff'] });
-        if (Date.now() < end) requestAnimationFrame(frame);
-      }());
-    }
+    setTimeout(() => setShowOutputScreen(true), 2500);
   }, [layout, graphStatus, currentPhaseIndex, projectPrompt]);
 
   const rebootSequence = () => {
@@ -255,6 +300,94 @@ const App = () => {
     const nodes = Object.values(layout).map(n => n.id);
     store.resetExecution(nodes);
     store.setProjectPrompt('');
+    setShowOutputScreen(false);
+  };
+
+  const renderPipelineSidebarContent = () => {
+    if (!selectedNodeId) return null;
+
+    // Sticky note branch
+    if (selectedNodeId.startsWith('sticky-')) {
+      const stickyNote = stickyNotes.find(n => `sticky-${n.id}` === selectedNodeId);
+      const STICKY_COLORS = ['#A259FF', '#46B1FF', '#DEF767', '#FF6A6A', '#FACC15'];
+      return (
+        <div className="flex-1 mt-4 flex flex-col gap-4">
+          <div className="flex items-center gap-2">
+            <span className="text-[9px] text-slate-500 uppercase tracking-widest font-bold mr-1">Accent</span>
+            {STICKY_COLORS.map(color => (
+              <button
+                key={color}
+                onClick={() => {
+                  setStickyNotes(prev => prev.map(n => n.id === stickyNote?.id ? { ...n, color } : n));
+                }}
+                className="w-5 h-5 rounded-full border-2 transition-all hover:scale-125"
+                style={{
+                  background: color,
+                  borderColor: stickyNote?.color === color ? '#fff' : 'transparent',
+                  boxShadow: stickyNote?.color === color ? `0 0 10px ${color}` : 'none',
+                }}
+              />
+            ))}
+          </div>
+          <textarea
+            className="w-full min-h-[200px] bg-white/[0.02] border border-white/[0.05] rounded-xl p-4 text-sm text-slate-200 leading-relaxed font-secondary resize-none outline-none focus:border-[#A259FF]/40 transition-colors shadow-inner custom-scrollbar"
+            placeholder="Write your insights here..."
+            value={stickyNote?.text || ''}
+            onChange={(e) => {
+              setStickyNotes(prev => prev.map(n => n.id === stickyNote?.id ? { ...n, text: e.target.value } : n));
+            }}
+          />
+          <button
+            onClick={() => {
+              setStickyNotes(prev => prev.filter(n => n.id !== stickyNote?.id));
+              selectNode(null);
+            }}
+            className="flex items-center justify-center gap-2 w-full py-3 rounded-xl bg-[#ff4b4b]/10 border border-[#ff4b4b]/20 text-[#ff4b4b] text-xs font-bold uppercase tracking-widest hover:bg-[#ff4b4b]/20 transition-colors"
+          >
+            <Trash2 size={14} /> Delete Sticky Note
+          </button>
+          <p className="text-[9px] text-slate-600 uppercase tracking-widest text-center">Changes sync to canvas in real-time</p>
+        </div>
+      );
+    }
+
+    // Node with AI results
+    if (nodeResults && nodeResults[selectedNodeId]?.ui) {
+      return (
+        <div className="flex-1 w-full relative">
+          <div dangerouslySetInnerHTML={{ __html: nodeResults[selectedNodeId].ui }} />
+        </div>
+      );
+    }
+
+    // Default: node details + tool list
+    return (
+      <div className="flex-1 mt-4">
+        <div className="p-4 rounded-xl bg-white/[0.02] border border-white/[0.05] mb-8 shadow-inner">
+          <p className="text-sm text-slate-400 leading-relaxed font-light">{layout[selectedNodeId]?.category.description}</p>
+        </div>
+        <span className="text-[10px] text-[#A259FF] uppercase font-bold tracking-widest mb-4 block">Recommended External APIs</span>
+        <div className="flex flex-col gap-3">
+          {layout[selectedNodeId]?.category.tools.map(tid => {
+            const toolInfo = TOOL_REGISTRY[tid];
+            return (
+              <div key={tid} className="bg-gradient-to-r from-white/[0.03] to-transparent border border-white/[0.05] p-4 rounded-xl cursor-default transition-all group">
+                <div className="flex justify-between items-start mb-1">
+                  <strong className="text-slate-200 text-sm tracking-wide group-hover:text-[#46B1FF] transition-colors">{toolInfo?.name || tid.toUpperCase()}</strong>
+                  {toolInfo?.pricing && (
+                    <span className="text-[9px] bg-black/40 border border-white/10 text-slate-400 px-2.5 py-0.5 rounded-md uppercase tracking-wider">{toolInfo.pricing}</span>
+                  )}
+                </div>
+                <p className="text-xs text-slate-500 line-clamp-2 mt-2 leading-relaxed">{toolInfo?.description}</p>
+              </div>
+            );
+          })}
+        </div>
+        <div className="mt-12 flex justify-center pb-8 border-b border-white/[0.02]">
+          <p className="text-[9px] text-slate-600 uppercase tracking-widest text-center px-4">Execute AI Pipeline Phase to generate dynamic output for this node.</p>
+        </div>
+      </div>
+    );
   };
 
   if (graphStatus === 'error') {
@@ -293,43 +426,119 @@ const App = () => {
           </div>
         </div>
       )}
+      
+      {viewMode === 'templates' && <TemplatesView />}
 
-      {/* ── Floating Command Center (Project Prompt) ── */}
-      <div className="absolute top-[80px] left-1/2 -translate-x-1/2 z-40 w-full max-w-4xl px-8 pointer-events-none">
-        <div className="flex flex-col items-center gap-2 pointer-events-auto bg-[#0c0c14]/80 backdrop-blur-xl border border-white/10 rounded-2xl p-4 shadow-2xl">
+      {/* ── Floating Neuro-Command (Project Prompt) ── */}
+      {viewMode === 'pipeline' && (
+      <div className="absolute top-[100px] left-1/2 -translate-x-1/2 z-40 w-full max-w-5xl px-8 pointer-events-none">
+        <div className="flex flex-col items-center gap-2 pointer-events-auto bg-[#0a0a0f]/60 backdrop-blur-3xl border border-white/5 rounded-3xl p-5 shadow-[0_30px_60px_rgba(0,0,0,0.6)]">
           <div className="flex items-center gap-4 w-full">
-             <input
-               value={projectPrompt}
-               onChange={(e) => setProjectPrompt(e.target.value)}
-               placeholder="Enter your Project Directive... (e.g., A minimalist habit tracker app)"
-               className="flex-1 bg-black/60 border border-transparent rounded-xl px-4 py-3 outline-none focus:border-[#46B1FF]/50 transition-colors text-white text-sm shadow-inner placeholder:text-slate-500 font-secondary"
-               disabled={graphStatus === 'running'}
-             />
-             <button 
-               onClick={graphStatus === 'completed' ? rebootSequence : runCurrentPhase}
-               disabled={graphStatus === 'running' || !projectPrompt}
-               className={`px-6 py-3 rounded-xl font-bold flex items-center gap-3 transition-colors ${
-                 graphStatus === 'completed' 
-                   ? 'bg-[#DEF767] hover:bg-[#DEF767]/80 text-black' 
-                   : projectPrompt && graphStatus !== 'running' 
-                     ? 'bg-gradient-to-r from-[#46B1FF] to-[#A259FF] hover:opacity-80 text-white shadow-lg' 
-                     : 'bg-white/5 text-slate-500 cursor-not-allowed'
-               }`}
-             >
-               {graphStatus === 'completed' ? (
-                 <><RefreshCw size={16} /> Reboot AI Pipeline</>
-               ) : graphStatus === 'running' ? (
-                 <><RefreshCw size={16} className="animate-spin" /> Running Phase {currentPhaseIndex + 1}...</>
-               ) : (
-                 <><Play size={16} fill="currentColor" /> Execute Phase {currentPhaseIndex + 1}</>
-               )}
-             </button>
+             <div className="flex-1 relative group">
+                <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none text-slate-500 group-focus-within:text-[#46B1FF] transition-colors">
+                  <Activity size={18} />
+                </div>
+                <input
+                  value={projectPrompt}
+                  onChange={(e) => setProjectPrompt(e.target.value)}
+                  placeholder="Orchestrate your objective... (e.g. Design a technical whitepaper for a DeFi protocol)"
+                  className="w-full bg-black/60 border border-white/5 rounded-[18px] py-4 pl-12 pr-6 outline-none focus:border-[#46B1FF]/40 transition-all text-white text-sm shadow-inner placeholder:text-slate-600 font-secondary"
+                  disabled={graphStatus === 'running'}
+                />
+             </div>
+             
+             {/* Action Buttons */}
+             <div className="flex items-center gap-2">
+               <input
+                 ref={fileInputRef}
+                 type="file"
+                 accept=".txt,.md,.json,.pdf"
+                 className="hidden"
+                 onChange={(e) => {
+                   const file = e.target.files?.[0];
+                   if (!file) return;
+                   const reader = new FileReader();
+                   reader.onload = (ev) => {
+                     setProjectAttachment({ name: file.name, content: ev.target.result, type: file.type });
+                   };
+                   reader.readAsText(file);
+                   e.target.value = '';
+                 }}
+               />
+               <button
+                 onClick={() => fileInputRef.current?.click()}
+                 disabled={graphStatus === 'running'}
+                 className="w-14 h-14 rounded-2xl bg-white/[0.03] border border-white/5 text-slate-400 hover:text-[#46B1FF] hover:border-[#46B1FF]/30 transition-all flex items-center justify-center group"
+                 title="Attach context (.txt, .md, .pdf)"
+               >
+                 <Paperclip size={20} className="group-hover:rotate-12 transition-transform" />
+               </button>
+
+               <button 
+                 onClick={graphStatus === 'completed' ? rebootSequence : runFullPipeline}
+                 disabled={graphStatus === 'running' || !projectPrompt}
+                 className={`h-14 px-8 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-3 transition-all ${
+                   graphStatus === 'completed' 
+                     ? 'bg-[#DEF767] text-black shadow-[0_0_30px_rgba(222,247,103,0.3)]' 
+                     : projectPrompt && graphStatus !== 'running' 
+                       ? 'bg-white text-black hover:bg-[#A259FF] hover:text-white shadow-2xl active:scale-95' 
+                       : 'bg-white/5 text-slate-600 cursor-not-allowed'
+                 }`}
+               >
+                 {graphStatus === 'completed' ? (
+                   <><RefreshCw size={18} /> Reboot Sequence</>
+                 ) : graphStatus === 'running' ? (
+                   <><div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" /> Orchestrating...</>
+                 ) : (
+                   <><Play size={18} fill="currentColor" /> Initialize Engine</>
+                 )}
+               </button>
+             </div>
           </div>
+
+          {/* Attachment Chip */}
+          {projectAttachment && (
+            <div className="flex items-center gap-2 w-full mt-3 animate-fade-in">
+              <div className="flex items-center gap-3 bg-[#46B1FF]/10 border border-[#46B1FF]/20 text-[#46B1FF] px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider">
+                <Folder size={14} />
+                {projectAttachment.name}
+                <button 
+                  onClick={() => setProjectAttachment(null)}
+                  className="ml-2 hover:text-white transition-colors"
+                >
+                  <X size={12} />
+                </button>
+              </div>
+              <span className="text-[9px] text-slate-500 uppercase tracking-widest">Attached — will be included in AI context</span>
+            </div>
+          )}
         </div>
       </div>
+      )}
       
-      <FlowControls setCamera={setCamera} />
-      <ToolDock activeTool={activeTool} setActiveTool={setActiveTool} openTemplates={() => alert('Templates feature coming soon')} />
+      {viewMode === 'pipeline' && <FlowControls setCamera={setCamera} camera={camera} />}
+      <ToolDock
+        activeTool={activeTool}
+        setActiveTool={setActiveTool}
+        canvasLocked={canvasLocked}
+        setCanvasLocked={setCanvasLocked}
+        onEraseAll={() => {
+          setStickyNotes([]);
+          setStrokes([]);
+          setTextLabels([]);
+          setCurrentStroke(null);
+        }}
+        onScreenshot={async () => {
+          const html2canvas = (await import('html2canvas')).default;
+          const canvas = canvasRef.current;
+          if (!canvas) return;
+          const shot = await html2canvas(canvas, { backgroundColor: '#0a0a10', useCORS: true });
+          const link = document.createElement('a');
+          link.download = `agentic-flow-canvas-${Date.now()}.png`;
+          link.href = shot.toDataURL();
+          link.click();
+        }}
+      />
 
       {/* ── Infinite Node Canvas ── */}
       <div className="flex flex-1 overflow-hidden relative">
@@ -353,7 +562,7 @@ const App = () => {
             }}
           >
             {/* Background Phase Labels */}
-            {WORKFLOW_PHASES.map((p, idx) => {
+            {viewMode === 'pipeline' && WORKFLOW_PHASES.map((p, idx) => {
               const firstNodeId = `${p.id}::${p.categories[0]}`;
               const firstNodeLayout = layout[firstNodeId];
               if (!firstNodeLayout) return null;
@@ -382,8 +591,9 @@ const App = () => {
             })}
 
             {/* Edges / Wires */}
-            <svg className="absolute inset-0 pointer-events-none w-full h-full overflow-visible">
-              <defs>
+            {viewMode === 'pipeline' && (
+              <svg className="absolute inset-0 pointer-events-none w-full h-full overflow-visible">
+                <defs>
                 <marker id="arrow-lime" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="4" markerHeight="4" orient="auto-start-reverse">
                   <path d="M 0 0 L 10 5 L 0 10 z" fill="#DEF767" />
                 </marker>
@@ -431,9 +641,15 @@ const App = () => {
                 );
               })}
             </svg>
+            )}
+
+            {/* Builder Canvas */}
+            {viewMode === 'builder' && (
+               <BuilderCanvas activeTool={activeTool} setActiveTool={setActiveTool} getCanvasCoords={getCanvasCoords} />
+            )}
 
             {/* Agent Nodes */}
-            {Object.values(layout).map((node) => {
+            {viewMode === 'pipeline' && Object.values(layout).map((node) => {
               const animState = useWorkflowStore.getState().animationState;
               const isVisible = animState.activeNodes.includes(node.id) || graphStatus === 'ready' || graphStatus === 'completed' || graphStatus === 'running'; 
               
@@ -453,21 +669,38 @@ const App = () => {
               )
             })}
             {/* Sticky Notes */}
-            {stickyNotes.map(note => (
+            {viewMode === 'pipeline' && stickyNotes.map(note => {
+              const noteColor = note.color || '#A259FF';
+              const noteW = note.width || 220;
+              const noteH = note.height || 160;
+
+              return (
               <div key={`sticky-${note.id}`} 
-                className="absolute sticky-note p-3 rounded-xl z-20 transition-all font-secondary flex flex-col group shadow-xl"
-                onClick={() => selectNode(`sticky-${note.id}`)}
+                className={`absolute sticky-note p-3 rounded-2xl z-20 transition-all font-secondary flex flex-col group shadow-2xl cursor-pointer ${
+                  selectedNodeId === `sticky-${note.id}` ? 'border' : 'border border-transparent'
+                }`}
+                onMouseDown={(e) => {
+                  if (e.target.classList.contains('resize-handle')) {
+                    e.stopPropagation();
+                    setResizingAppElement({ type: 'sticky', id: note.id, elemX: note.x, elemY: note.y });
+                    return;
+                  }
+                  if (activeTool === 'cursor') {
+                    e.stopPropagation();
+                    selectNode(`sticky-${note.id}`);
+                    const coords = getCanvasCoords(e.clientX, e.clientY);
+                    setDraggingAppElement({ type: 'sticky', id: note.id, startX: note.x, startY: note.y, startMouseX: coords.x, startMouseY: coords.y });
+                  }
+                }}
                 style={{
-                  left: note.x - 110, top: note.y - 80, width: 220, height: 160,
-                  background: 'rgba(26, 26, 46, 0.85)',
-                  border: '1px solid rgba(162, 89, 255, 0.5)',
-                  backdropFilter: 'blur(12px)',
+                  left: note.x, top: note.y, width: noteW, height: noteH,
+                  background: 'rgba(26, 26, 46, 0.75)',
+                  borderColor: selectedNodeId === `sticky-${note.id}` ? noteColor : `${noteColor}40`,
+                  backdropFilter: 'blur(16px)',
                   pointerEvents: activeTool === 'cursor' ? 'auto' : 'none',
-                  cursor: activeTool === 'cursor' ? 'pointer' : 'default',
-                  transform: selectedNodeId === `sticky-${note.id}` ? 'scale(1.02)' : 'scale(1)',
-                  boxShadow: selectedNodeId === `sticky-${note.id}` ? '0 0 25px rgba(162, 89, 255, 0.3)' : '0 0 15px rgba(162, 89, 255, 0.1)',
+                  boxShadow: selectedNodeId === `sticky-${note.id}` ? `0 0 30px ${noteColor}40` : `0 10px 30px rgba(0,0,0,0.5)`,
                 }}>
-                <div className="w-full h-1 bg-gradient-to-r from-[#A259FF] to-[#46B1FF] rounded-t-sm absolute top-0 left-0" />
+                <div className="w-full h-1.5 rounded-t-xl absolute top-0 left-0" style={{ background: `linear-gradient(to right, ${noteColor}, ${noteColor}80)` }} />
                 
                 <button
                   onClick={(e) => {
@@ -477,27 +710,64 @@ const App = () => {
                       useWorkflowStore.getState().selectNode(null);
                     }
                   }}
-                  className="absolute top-2 right-2 p-1.5 rounded-lg bg-black/40 text-slate-400 hover:text-white hover:bg-[#ff4b4b] transition-all opacity-0 group-hover:opacity-100 z-50 shadow-md"
+                  className="absolute top-3 right-3 p-1.5 rounded-lg bg-black/60 text-slate-400 hover:text-white hover:bg-[#ff4b4b] transition-all opacity-0 group-hover:opacity-100 z-50 shadow-md"
                 >
                   <Trash2 size={14} />
                 </button>
 
                 <textarea 
-                  className="flex-1 w-full mt-2 bg-transparent outline-none resize-none text-slate-200 text-sm placeholder-slate-500 custom-scrollbar-neon"
+                  className="flex-1 w-full mt-3 bg-transparent outline-none resize-none text-slate-200 text-sm placeholder-slate-500 custom-scrollbar-neon"
                   placeholder="Note insights here..."
-                  defaultValue={note.text}
+                  value={note.text}
                   onMouseDown={e => e.stopPropagation()}
                   onChange={(e) => {
-                    const newNotes = stickyNotes.map(n => n.id === note.id ? { ...n, text: e.target.value } : n);
-                    setStickyNotes(newNotes);
+                    setStickyNotes(prev => prev.map(n => n.id === note.id ? { ...n, text: e.target.value } : n));
                   }}
                 />
+
+                {/* Resize Handle */}
+                <div
+                  className="resize-handle absolute bottom-0 right-0 w-6 h-6 cursor-nwse-resize opacity-0 group-hover:opacity-100 transition-opacity z-30"
+                  style={{
+                    background: `linear-gradient(135deg, transparent 50%, ${noteColor}80 50%)`,
+                    borderRadius: '0 0 16px 0',
+                  }}
+                />
+              </div>
+              );
+            })}
+
+            {/* Text Labels */}
+            {viewMode === 'pipeline' && textLabels.map(label => (
+              <div
+                key={`label-${label.id}`}
+                className="absolute z-20 pointer-events-auto group"
+                style={{ left: label.x - 75, top: label.y - 15 }}
+              >
+                <input
+                  className="bg-transparent outline-none text-white text-sm font-bold w-[150px] placeholder-slate-500 border-b border-dashed border-white/20 focus:border-[#46B1FF]/50 pb-1 transition-colors"
+                  placeholder="Type label..."
+                  value={label.text}
+                  onMouseDown={e => e.stopPropagation()}
+                  onChange={(e) => {
+                    setTextLabels(prev => prev.map(l => l.id === label.id ? { ...l, text: e.target.value } : l));
+                  }}
+                />
+                <button
+                  onClick={() => setTextLabels(prev => prev.filter(l => l.id !== label.id))}
+                  className="absolute -top-2 -right-2 w-4 h-4 rounded-full bg-[#ff4b4b] text-white text-[8px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                >
+                  ✕
+                </button>
               </div>
             ))}
           </div>
         </div>
 
         {/* ── Intelligence Layer Output Sidebar ── */}
+        {viewMode === 'builder' ? (
+           <BuilderSidebar />
+        ) : (
         <div 
           className={`absolute right-0 top-0 h-full w-[460px] bg-[#0c0c14]/60 backdrop-blur-2xl border-l border-white/5 p-0 shadow-2xl transition-transform duration-500 z-50 flex flex-col ${selectedNodeId ? 'translate-x-0' : 'translate-x-full'}`}
         >
@@ -513,54 +783,28 @@ const App = () => {
            
            <div className="flex-1 overflow-y-auto custom-scrollbar p-6">
            {selectedNodeId ? (
-               <div className="animate-fade-in flex flex-col h-full"> 
-                 {selectedNodeId.startsWith('sticky-') ? (
-                   <div className="flex-1 mt-4">
-                     <div className="p-4 rounded-xl bg-white/[0.02] border border-white/[0.05] shadow-inner mb-4">
-                       <p className="text-sm text-slate-200 leading-relaxed font-secondary whitespace-pre-wrap">
-                         {stickyNotes.find(n => `sticky-${n.id}` === selectedNodeId)?.text || 'Empty Sticky Note'}
-                       </p>
-                     </div>
-                     <p className="text-[10px] text-slate-500 uppercase tracking-widest">Update note on the canvas Toolkit</p>
-                   </div>
-                 ) : nodeResults && nodeResults[selectedNodeId]?.ui ? (
-                   <div className="flex-1 w-full relative">
-                      <div dangerouslySetInnerHTML={{ __html: nodeResults[selectedNodeId].ui }} />
-                   </div>
-                 ) : (
-                   <div className="flex-1 mt-4">
-                    <div className="p-4 rounded-xl bg-white/[0.02] border border-white/[0.05] mb-8 shadow-inner">
-                       <p className="text-sm text-slate-400 leading-relaxed font-light">{layout[selectedNodeId]?.category.description}</p>
-                    </div>
-                    
-                    <span className="text-[10px] text-[#A259FF] uppercase font-bold tracking-widest mb-4 block">Recommended External APIs</span>
-                    <div className="flex flex-col gap-3">
-                       {layout[selectedNodeId]?.category.tools.map(tid => {
-                         const toolInfo = TOOL_REGISTRY[tid];
-                         return (
-                           <div key={tid} className="bg-gradient-to-r from-white/[0.03] to-transparent border border-white/[0.05] p-4 rounded-xl cursor-default transition-all group">
-                              <div className="flex justify-between items-start mb-1">
-                                <strong className="text-slate-200 text-sm tracking-wide group-hover:text-[#46B1FF] transition-colors">{toolInfo?.name || tid.toUpperCase()}</strong>
-                                {toolInfo?.pricing && (
-                                  <span className="text-[9px] bg-black/40 border border-white/10 text-slate-400 px-2.5 py-0.5 rounded-md uppercase tracking-wider">{toolInfo.pricing}</span>
-                                )}
-                              </div>
-                              <p className="text-xs text-slate-500 line-clamp-2 mt-2 leading-relaxed">{toolInfo?.description}</p>
-                           </div>
-                         )
-                       })}
-                    </div>
-                    <div className="mt-12 flex justify-center pb-8 border-b border-white/[0.02]">
-                       <p className="text-[9px] text-slate-600 uppercase tracking-widest text-center px-4">Execute AI Pipeline Phase to generate dynamic output for this node.</p>
-                    </div>
-                  </div>
-                )}
+                <div className="animate-fade-in flex flex-col h-full">
+                  {renderPipelineSidebarContent()}
               </div>
            ) : null}
            </div>
         </div>
+        )}
       </div>
       <FlowFooter flowStatus={graphStatus === 'loading' ? 'running' : 'idle'} logs={[]} completedCount={0} totalCount={16} />
+
+      {/* View Results Button - appears when completed */}
+      {graphStatus === 'completed' && (
+        <button
+          onClick={() => setShowOutputScreen(true)}
+          className="fixed bottom-6 right-6 z-[60] flex items-center gap-2 px-5 py-3 rounded-xl bg-gradient-to-r from-[#DEF767] to-[#A3E636] text-black text-xs font-black uppercase tracking-widest shadow-xl shadow-[#DEF767]/20 hover:scale-105 transition-transform animate-bounce"
+          style={{ animationIterationCount: 3 }}
+        >
+          <FileText size={16} /> View Results & Download PDF
+        </button>
+      )}
+
+      <OutputScreen isOpen={showOutputScreen} onClose={() => setShowOutputScreen(false)} />
     </div>
   );
 };
