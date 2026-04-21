@@ -1,9 +1,47 @@
-import React from 'react';
+import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useBuilderStore } from '../lib/builderStore';
-import { Settings, Play, Clock, Key, Trash2 } from 'lucide-react';
+import { Settings, Play, Clock, Key, Trash2, Download, Loader2 } from 'lucide-react';
 
 const BuilderSidebar = () => {
-  const { blocks, connections, selectedElementId, setSelectedElementId, updateBlock, deleteBlock, deleteConnection } = useBuilderStore();
+  const { blocks, connections, selectedElementId, setSelectedElementId, updateBlock, deleteBlock, deleteConnection, setNodeStatus, setNodeResult, resetExecution } = useBuilderStore();
+  
+  const [showResultOverlay, setShowResultOverlay] = useState(false);
+  const [globalContextLog, setGlobalContextLog] = useState("");
+  const [isDeploying, setIsDeploying] = useState(false);
+
+  const setViewMode = useBuilderStore(state => state.setViewMode);
+
+  const handleInitializeEngine = async () => {
+    setIsDeploying(true);
+    
+    // Zoom out canvas elements visually
+    const canvasRef = document.getElementById('builder-canvas-area');
+    if (canvasRef) canvasRef.classList.add('scale-75', 'opacity-0', 'transition-all', 'duration-1000');
+    
+    // Gradient Pulse transition effect portal hook
+    const transitionOverlay = document.createElement('div');
+    transitionOverlay.className = "fixed inset-0 z-[150] bg-gradient-to-r from-cyan-500/0 via-purple-500/20 to-cyan-500/0 backdrop-blur-3xl animate-fade-in pointer-events-none flex flex-col items-center justify-center";
+    transitionOverlay.innerHTML = `<h1 class="text-4xl font-display font-black text-white mix-blend-overlay tracking-widest uppercase shadow-black drop-shadow-xl animate-pulse">Compiling Neural Path...</h1>`;
+    document.body.appendChild(transitionOverlay);
+
+    // Save configuration
+    const templateName = blocks.length > 0 ? blocks[0].name : "Custom Builder Flow";
+    useBuilderStore.getState().deployProject(templateName);
+
+    // Simulate compilation network propagation
+    await new Promise(r => setTimeout(r, 2500));
+    
+    // Remove Overlay
+    document.body.removeChild(transitionOverlay);
+    setIsDeploying(false);
+    
+    // Clear styles
+    if (canvasRef) canvasRef.classList.remove('scale-75', 'opacity-0');
+    
+    // Redirect to pipeline natively
+    setViewMode('pipeline');
+  };
 
   const selectedBlock = blocks.find(b => b.id === selectedElementId);
   const selectedConnection = connections.find(c => c.id === selectedElementId);
@@ -79,19 +117,6 @@ const BuilderSidebar = () => {
               </select>
             </div>
 
-            {/* API Key */}
-            <div className="space-y-4 pt-4 border-t border-white/[0.04] pb-4">
-              <h3 className="text-[11px] font-bold uppercase tracking-wider text-slate-300 flex items-center gap-2"><Key size={14} className="text-[#FF6A6A]" /> External API Key</h3>
-              <input
-                type="password"
-                value={selectedBlock.apiKey}
-                onChange={(e) => updateBlock(selectedBlock.id, { apiKey: e.target.value })}
-                className="w-full bg-black/40 border border-white/5 focus:border-[#FF6A6A]/50 rounded-xl px-4 py-3 text-sm text-white transition-colors outline-none font-mono"
-                placeholder="sk-or-••••••••••••"
-              />
-              <p className="text-[10px] text-slate-500 uppercase tracking-widest">Kept securely in-memory for session</p>
-            </div>
-
             <div className="mt-auto">
               <button
                 onClick={() => deleteBlock(selectedBlock.id)}
@@ -114,12 +139,45 @@ const BuilderSidebar = () => {
         ) : (
           <div className="flex flex-col items-center justify-center h-full text-center opacity-60">
             <Settings size={48} className="mb-4 text-slate-600" />
-            <p className="text-sm text-slate-400 max-w-[250px]">
+            <p className="text-sm text-slate-400 max-w-[250px] mb-8">
               Select an agent block or wire connection on the canvas to configure settings.
             </p>
+            <button 
+              onClick={handleInitializeEngine}
+              disabled={isDeploying || blocks.length === 0}
+              className={`bg-gradient-to-r from-[#A259FF] to-[#6c39b3] text-white px-6 py-3 rounded-xl font-bold uppercase tracking-widest text-xs transition-transform flex items-center gap-2 shadow-[0_0_20px_rgba(162,89,255,0.4)] ${isDeploying ? 'opacity-80 scale-95 cursor-wait' : 'hover:scale-105'}`}
+            >
+              {isDeploying ? <Loader2 size={16} className="animate-spin" /> : <Play size={16} />}
+              {isDeploying ? 'Deploying...' : 'Initialize Engine'}
+            </button>
           </div>
         )}
       </div>
+
+      {showResultOverlay && createPortal(
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-[#050505]/90 backdrop-blur-xl">
+           <div className="bg-[#0c0c14] border border-white/10 rounded-3xl p-8 max-w-3xl w-full max-h-[80vh] flex flex-col shadow-[0_0_100px_rgba(0,0,0,1)]">
+             <div className="flex justify-between items-center mb-6">
+                <div>
+                  <h2 className="text-3xl font-display font-black text-white tracking-wide">Builder Compilation</h2>
+                  <p className="text-sm text-slate-400 font-secondary mt-1">Global Context Output Sequence</p>
+                </div>
+                <button onClick={() => setShowResultOverlay(false)} className="p-3 bg-white/5 hover:bg-white/10 rounded-full transition-colors text-white">✕</button>
+             </div>
+             
+             <div className="flex-1 overflow-y-auto custom-scrollbar bg-black/40 rounded-xl p-6 border border-white/5 font-mono text-xs leading-loose text-slate-300">
+               {globalContextLog.split('\n').map((line, i) => <div key={i} className="mb-2">{line}</div>) || "No compilation sequence occurred."}
+             </div>
+
+             <div className="mt-6 flex justify-end gap-4">
+                 <button className="flex items-center gap-2 px-6 py-3 rounded-xl border border-[#F6E27F] text-[#F6E27F] hover:bg-[#F6E27F]/10 font-bold uppercase tracking-widest text-xs transition-colors">
+                   <Download size={16} /> Download Result
+                 </button>
+             </div>
+           </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
 };

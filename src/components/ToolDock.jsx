@@ -6,7 +6,7 @@ const ToolDock = ({ activeTool, setActiveTool, canvasLocked, setCanvasLocked, on
   const { viewMode, setViewMode, addBlock } = useBuilderStore();
 
   return (
-    <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-50 flex items-end gap-2 p-2 rounded-[24px] shadow-[0_20px_50px_rgba(0,0,0,0.5)] transition-all bg-[#0f0f14]/60 backdrop-blur-2xl border border-white/5 group/dock">
+    <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-50 flex items-end gap-4 p-3 px-6 rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] transition-all bg-[#0f0f14]/60 backdrop-blur-2xl border border-white/5 group/dock">
       
       {viewMode === 'builder' && (
         <>
@@ -48,10 +48,10 @@ const ToolButton = ({ active, onClick, icon, title }) => (
   <div className="relative group/btn h-12 flex items-center">
     <button
       onClick={onClick}
-      className={`p-3 rounded-2xl transition-all duration-300 origin-bottom hover:scale-[1.5] hover:-translate-y-4 active:scale-95 ${
+      className={`p-3 rounded-2xl transition-all duration-300 origin-bottom group-hover/btn:scale-[1.2] group-hover/btn:-translate-y-2 active:scale-95 ${
         active 
           ? 'bg-[#A259FF] text-white shadow-[0_0_20px_rgba(162,89,255,0.4)]' 
-          : 'text-slate-400 hover:text-white hover:bg-white/10'
+          : 'text-slate-400 group-hover/btn:text-white group-hover/btn:bg-white/10'
       }`}
     >
       {icon}

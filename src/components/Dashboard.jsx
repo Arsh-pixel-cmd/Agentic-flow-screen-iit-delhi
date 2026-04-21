@@ -81,7 +81,7 @@ export default function Dashboard() {
     const updated = [newSeq, ...sequences];
     setSequences(updated);
     localStorage.setItem('agentic_sequences', JSON.stringify(updated));
-    window.location.href = '/'; 
+    window.location.href = '/canvas'; 
   };
   
   const handleDelete = (id) => {
@@ -213,7 +213,7 @@ function SessionCard({ sequence, index, onDelete }) {
 
   return (
     <motion.div 
-      onClick={() => window.location.href = '/'}
+      onClick={() => window.location.href = '/canvas'}
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5, delay: index * 0.05 }}

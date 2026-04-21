@@ -51,7 +51,7 @@ const FlowHeader = () => {
       </div>
 
       {/* Center: View Toggles */}
-      <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center bg-white/[0.02] border border-white/[0.05] p-1.5 rounded-2xl shadow-xl backdrop-blur-xl">
+      <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center gap-[4rem] bg-white/[0.02] border border-white/[0.05] py-2 px-8 rounded-3xl shadow-xl backdrop-blur-xl">
         <button
           onClick={() => setViewMode('pipeline')}
           className={`flex items-center gap-2.5 px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all duration-300 ${
@@ -71,16 +71,6 @@ const FlowHeader = () => {
           }`}
         >
           <LayoutGrid size={14} /> Builder
-        </button>
-        <button
-          onClick={() => setViewMode('templates')}
-          className={`flex items-center gap-2.5 px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all duration-300 ${
-            viewMode === 'templates' 
-              ? 'bg-[#DEF767] text-black shadow-[0_5px_20px_rgba(222,247,103,0.3)]' 
-              : 'text-slate-500 hover:text-slate-300 hover:bg-white/5'
-          }`}
-        >
-          <Layers size={14} /> Templates
         </button>
       </div>
 

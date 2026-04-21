@@ -7,7 +7,9 @@ const BuilderCanvas = ({ activeTool, setActiveTool, getCanvasCoords }) => {
   const { 
     blocks, connections, updateBlock, selectedElementId, 
     setSelectedElementId, connectBlocks,
-    stickyNotes, addStickyNote, updateStickyNote, deleteStickyNote
+    stickyNotes, addStickyNote, updateStickyNote, deleteStickyNote,
+    textLabels, addTextLabel, updateTextLabel, deleteTextLabel,
+    nodeStatus
   } = useBuilderStore();
 
   const [draggingElement, setDraggingElement] = useState(null);
@@ -56,10 +58,10 @@ const BuilderCanvas = ({ activeTool, setActiveTool, getCanvasCoords }) => {
         const target = document.elementFromPoint(e.clientX, e.clientY);
         if (target && target.classList.contains('connection-port')) {
           const targetId = target.getAttribute('data-port-id');
-          const targetType = target.getAttribute('data-port-type');
+          const targetPort = target.getAttribute('data-port-position');
           
-          if (targetType === 'target' && targetId !== wiringState.sourceId) {
-            connectBlocks(wiringState.sourceId, targetId);
+          if (targetId && targetId !== wiringState.sourceId) {
+            connectBlocks(wiringState.sourceId, targetId, wiringState.sourcePort, targetPort);
           }
         }
         setWiringState(null);
@@ -92,20 +94,19 @@ const BuilderCanvas = ({ activeTool, setActiveTool, getCanvasCoords }) => {
     // Check if clicked port
     if (e.target.classList.contains('connection-port')) {
        e.stopPropagation();
-       const portType = e.target.getAttribute('data-port-type');
-       if (portType === 'source') {
-         const blockRect = e.target.getBoundingClientRect();
-         const portCenterX = blockRect.left + blockRect.width / 2;
-         const portCenterY = blockRect.top + blockRect.height / 2;
-         const canvasStartCoords = getCanvasCoords(portCenterX, portCenterY);
-         const coords = getCanvasCoords(e.clientX, e.clientY);
-         
-         setWiringState({
-           sourceId: block.id,
-           startPos: canvasStartCoords,
-           currentMousePos: coords
-         });
-       }
+       const portPosition = e.target.getAttribute('data-port-position');
+       const blockRect = e.target.getBoundingClientRect();
+       const portCenterX = blockRect.left + blockRect.width / 2;
+       const portCenterY = blockRect.top + blockRect.height / 2;
+       const canvasStartCoords = getCanvasCoords(portCenterX, portCenterY);
+       const coords = getCanvasCoords(e.clientX, e.clientY);
+       
+       setWiringState({
+         sourceId: block.id,
+         sourcePort: portPosition,
+         startPos: canvasStartCoords,
+         currentMousePos: coords
+       });
        return;
     }
 
@@ -151,12 +152,18 @@ const BuilderCanvas = ({ activeTool, setActiveTool, getCanvasCoords }) => {
     }
   };
 
-  // Handle canvas click for adding sticky notes in builder mode
+  // Handle canvas click for adding tools
   const handleCanvasClick = (e) => {
-    if (activeTool === 'sticky' && e.target.id === 'builder-canvas-area') {
-      const coords = getCanvasCoords(e.clientX, e.clientY);
-      addStickyNote(coords);
-      setActiveTool('cursor');
+    if (e.target.id === 'builder-canvas-area') {
+      if (activeTool === 'sticky') {
+        const coords = getCanvasCoords(e.clientX, e.clientY);
+        addStickyNote(coords);
+        setActiveTool('cursor');
+      } else if (activeTool === 'text') {
+        const coords = getCanvasCoords(e.clientX, e.clientY);
+        addTextLabel(coords);
+        setActiveTool('cursor');
+      }
     }
   };
 
@@ -169,13 +176,46 @@ const BuilderCanvas = ({ activeTool, setActiveTool, getCanvasCoords }) => {
       const srcW = srcBlock.size?.width || 260;
       const srcH = srcBlock.size?.height || 150;
       const tgtW = tgtBlock.size?.width || 260;
+      const tgtH = tgtBlock.size?.height || 150;
 
-      const p1 = { x: srcBlock.position.x + srcW / 2, y: srcBlock.position.y + srcH };
-      const p2 = { x: tgtBlock.position.x + tgtW / 2, y: tgtBlock.position.y - 12 };
+      const isSrcAbove = srcBlock.position.y + srcH / 2 <= tgtBlock.position.y + tgtH / 2;
+      const isSrcLeft = srcBlock.position.x + srcW / 2 <= tgtBlock.position.x + tgtW / 2;
+      
+      const sPort = conn.sourcePort || (isSrcAbove ? 'bottom' : 'top');
+      const tPort = conn.targetPort || (isSrcAbove ? 'top' : 'bottom');
 
-      const offset = Math.abs(p2.y - p1.y) * 0.5 + 40;
-      const pathData = `M ${p1.x} ${p1.y} C ${p1.x} ${p1.y + offset}, ${p2.x} ${p2.y - offset}, ${p2.x} ${p2.y}`;
+      const getAnchor = (block, port, width, height) => {
+        if (port === 'top') return { x: block.position.x + width / 2, y: block.position.y - 12 };
+        if (port === 'bottom') return { x: block.position.x + width / 2, y: block.position.y + height };
+        if (port === 'left') return { x: block.position.x - 12, y: block.position.y + height / 2 };
+        if (port === 'right') return { x: block.position.x + width, y: block.position.y + height / 2 };
+        return { x: block.position.x + width / 2, y: block.position.y - 12 };
+      };
+
+      const p1 = getAnchor(srcBlock, sPort, srcW, srcH);
+      const p2 = getAnchor(tgtBlock, tPort, tgtW, tgtH);
+
+      const dist = Math.sqrt(Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2));
+      const offset = dist * 0.4 + 40; 
+      
+      const cp1 = { ...p1 };
+      if (sPort === 'top') cp1.y -= offset;
+      if (sPort === 'bottom') cp1.y += offset;
+      if (sPort === 'left') cp1.x -= offset;
+      if (sPort === 'right') cp1.x += offset;
+
+      const cp2 = { ...p2 };
+      if (tPort === 'top') cp2.y -= offset;
+      if (tPort === 'bottom') cp2.y += offset;
+      if (tPort === 'left') cp2.x -= offset;
+      if (tPort === 'right') cp2.x += offset;
+
+      const pathData = `M ${p1.x} ${p1.y} C ${cp1.x} ${cp1.y}, ${cp2.x} ${cp2.y}, ${p2.x} ${p2.y}`;
       const isSelected = selectedElementId === conn.id;
+
+      const srcStatus = nodeStatus[conn.sourceBlockId];
+      const tgtStatus = nodeStatus[conn.targetBlockId];
+      const isAnimating = srcStatus === 'success' && tgtStatus === 'running';
 
       return (
         <g key={conn.id} onClick={(e) => { e.stopPropagation(); setSelectedElementId(conn.id); }}>
@@ -186,8 +226,8 @@ const BuilderCanvas = ({ activeTool, setActiveTool, getCanvasCoords }) => {
             strokeWidth={isSelected ? "4" : "2"}
             fill="none"
             strokeDasharray="8 6"
-            className="transition-all cursor-pointer hover:stroke-[#DEF767]"
-            style={{ opacity: isSelected ? 1 : 0.6 }}
+            className={`transition-all cursor-pointer thread-wire ${isAnimating ? 'thread-active' : 'hover:stroke-[#DEF767]'}`}
+            style={{ opacity: isSelected || isAnimating ? 1 : 0.6 }}
           />
         </g>
       );
@@ -196,8 +236,25 @@ const BuilderCanvas = ({ activeTool, setActiveTool, getCanvasCoords }) => {
     if (wiringState) {
       const p1 = wiringState.startPos;
       const p2 = wiringState.currentMousePos;
-      const offset = Math.abs(p2.y - p1.y) * 0.5 + 40;
-      const actPath = `M ${p1.x} ${p1.y} C ${p1.x} ${p1.y + offset}, ${p2.x} ${p2.y - offset}, ${p2.x} ${p2.y}`;
+      const sPort = wiringState.sourcePort;
+
+      const dist = Math.sqrt(Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2));
+      const offset = dist * 0.4 + 40; 
+      
+      const cp1 = { ...p1 };
+      if (sPort === 'top') cp1.y -= offset;
+      if (sPort === 'bottom') cp1.y += offset;
+      if (sPort === 'left') cp1.x -= offset;
+      if (sPort === 'right') cp1.x += offset;
+
+      const cp2 = { ...p2 };
+      if (sPort === 'top' || sPort === 'bottom') {
+         cp2.y += (p1.y < p2.y ? -offset : offset);
+      } else {
+         cp2.x += (p1.x < p2.x ? -offset : offset);
+      }
+      
+      const actPath = `M ${p1.x} ${p1.y} C ${cp1.x} ${cp1.y}, ${cp2.x} ${cp2.y}, ${p2.x} ${p2.y}`;
       paths.push(
         <path key="active-wire" d={actPath} stroke="#A259FF" strokeWidth="2" fill="none" strokeDasharray="8 6" opacity="0.8" />
       );
@@ -280,6 +337,29 @@ const BuilderCanvas = ({ activeTool, setActiveTool, getCanvasCoords }) => {
           </div>
         );
       })}
+
+      {/* Builder Text Labels */}
+      {textLabels.map(label => (
+        <div
+          key={`builder-label-${label.id}`}
+          className="absolute z-20 pointer-events-auto group"
+          style={{ left: label.x - 75, top: label.y - 15 }}
+        >
+          <input
+            className="bg-transparent outline-none text-white text-sm font-bold w-[150px] placeholder-slate-500 border-b border-dashed border-white/20 focus:border-[#46B1FF]/50 pb-1 transition-colors"
+            placeholder="Type label..."
+            value={label.text}
+            onMouseDown={e => e.stopPropagation()}
+            onChange={(e) => updateTextLabel(label.id, e.target.value)}
+          />
+          <button
+            onClick={() => deleteTextLabel(label.id)}
+            className="absolute -top-2 -right-2 w-5 h-5 rounded-md bg-[#ff4b4b]/20 hover:bg-[#ff4b4b]/80 border border-[#ff4b4b]/50 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all shadow-lg"
+          >
+            <Trash2 size={10} />
+          </button>
+        </div>
+      ))}
     </div>
   );
 };

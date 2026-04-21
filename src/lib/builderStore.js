@@ -10,10 +10,33 @@ export const useBuilderStore = create((set, _get) => ({
   blocks: [],
   connections: [],
   stickyNotes: [],
+  textLabels: [],
   templates: [],
   
+  nodeStatus: {}, // id -> 'idle'|'running'|'success'|'error'
+  nodeResults: {}, // id -> output
+
+  setNodeStatus: (id, status) => set(state => ({ nodeStatus: { ...state.nodeStatus, [id]: status } })),
+  setNodeResult: (id, result) => set(state => ({ nodeResults: { ...state.nodeResults, [id]: result } })),
+  resetExecution: () => set(state => {
+    const emptyStatus = {};
+    state.blocks.forEach(b => { emptyStatus[b.id] = 'idle'; });
+    return { nodeStatus: emptyStatus, nodeResults: {} };
+  }),
+
   selectedElementId: null,
   setSelectedElementId: (id) => set({ selectedElementId: id }),
+
+  // --- TEXT LABELS ---
+  addTextLabel: (position) => set((state) => ({
+    textLabels: [...state.textLabels, { id: generateId(), text: '', x: position.x, y: position.y }]
+  })),
+  updateTextLabel: (id, text) => set((state) => ({
+    textLabels: state.textLabels.map(l => l.id === id ? { ...l, text } : l)
+  })),
+  deleteTextLabel: (id) => set((state) => ({
+    textLabels: state.textLabels.filter(l => l.id !== id)
+  })),
 
   // --- BLOCKS ---
   addBlock: (position) => {
@@ -22,6 +45,7 @@ export const useBuilderStore = create((set, _get) => ({
       name: 'New Agent',
       description: 'Describe the agent objective...',
       apiKey: '',
+      phase: 'discover', // default phase for agent buckets
       waitConfig: { type: 'none', delay: 0 },
       triggerConfig: { type: 'manual' },
       position: position || { 
@@ -46,14 +70,14 @@ export const useBuilderStore = create((set, _get) => ({
   })),
 
   // --- CONNECTIONS ---
-  connectBlocks: (sourceId, targetId) => set((state) => {
+  connectBlocks: (sourceId, targetId, sourcePort, targetPort) => set((state) => {
     // Prevent duplicate or self connections
     if (sourceId === targetId) return state;
-    if (state.connections.find(c => c.sourceBlockId === sourceId && c.targetBlockId === targetId)) {
+    if (state.connections.find(c => c.sourceBlockId === sourceId && c.targetBlockId === targetId && c.sourcePort === sourcePort && c.targetPort === targetPort)) {
        return state;
     }
     return {
-      connections: [...state.connections, { id: generateId(), sourceBlockId: sourceId, targetBlockId: targetId }]
+      connections: [...state.connections, { id: generateId(), sourceBlockId: sourceId, targetBlockId: targetId, sourcePort, targetPort }]
     };
   }),
 
@@ -90,13 +114,37 @@ export const useBuilderStore = create((set, _get) => ({
 
   clearAnnotations: () => set({ stickyNotes: [] }),
 
-  // --- TEMPLATES ---
+  // --- TEMPLATES & PIPELINE DEPLOYMENT ---
+  deployedTemplateId: null,
+
+  deployProject: (name) => {
+      const templateId = generateId();
+      set((state) => {
+          const template = {
+              id: templateId,
+              name: name || 'Untitled Template',
+              blocks: JSON.parse(JSON.stringify(state.blocks)),
+              connections: JSON.parse(JSON.stringify(state.connections)),
+              is_template: true,
+              status: 'active',
+              generated_from: 'builder'
+          };
+          return {
+              templates: [...state.templates, template],
+              deployedTemplateId: templateId
+          };
+      });
+  },
+
   saveAsTemplate: (name) => set((state) => {
     const template = {
       id: generateId(),
       name: name || 'Untitled Template',
       blocks: JSON.parse(JSON.stringify(state.blocks)),
-      connections: JSON.parse(JSON.stringify(state.connections))
+      connections: JSON.parse(JSON.stringify(state.connections)),
+      is_template: true,
+      status: 'active',
+      generated_from: 'builder'
     };
     return { templates: [...state.templates, template] };
   }),

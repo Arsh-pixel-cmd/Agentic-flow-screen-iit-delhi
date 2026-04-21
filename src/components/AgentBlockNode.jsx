@@ -3,9 +3,24 @@ import { Settings, Play, Clock } from 'lucide-react';
 import { useBuilderStore } from '../lib/builderStore';
 
 const AgentBlockNode = ({ block, isSelected }) => {
-  const { setSelectedElementId } = useBuilderStore();
+  const { setSelectedElementId, nodeStatus } = useBuilderStore();
+  const status = nodeStatus[block.id] || 'idle';
   const blockW = block.size?.width || 260;
   const blockH = block.size?.height || 150;
+
+  let borderClasses = 'border-white/[0.04] bg-[#111118] hover:border-white/20 shadow-xl z-10';
+  let pulseClass = '';
+  
+  if (isSelected) {
+      borderClasses = 'border-[#A259FF] bg-[#181824] shadow-[0_0_30px_rgba(162,89,255,0.4)] z-50';
+  } else if (status === 'running') {
+      borderClasses = 'border-[#F6E27F] bg-[#181824] shadow-[0_0_30px_rgba(246,226,127,0.4)] z-40';
+      pulseClass = 'animate-pulse';
+  } else if (status === 'success') {
+      borderClasses = 'border-[#DEF767] bg-[#111118] shadow-[0_0_20px_rgba(222,247,103,0.2)] z-30';
+  } else if (status === 'error') {
+      borderClasses = 'border-[#ff4b4b] bg-[#111118] shadow-[0_0_20px_rgba(255,75,75,0.2)] z-30';
+  }
 
   return (
     <div
@@ -13,9 +28,7 @@ const AgentBlockNode = ({ block, isSelected }) => {
         e.stopPropagation();
         setSelectedElementId(block.id);
       }}
-      className={`absolute border rounded-3xl p-5 transition-all n8n-node overflow-visible group cursor-pointer ${
-        isSelected ? 'bg-[#181824] border-[#A259FF] shadow-[0_0_30px_rgba(162,89,255,0.4)] z-50' : 'bg-[#111118] border-white/[0.04] hover:border-white/20 shadow-xl z-10'
-      }`}
+      className={`absolute border rounded-3xl p-5 transition-all n8n-node overflow-visible group cursor-pointer ${borderClasses} ${pulseClass}`}
       style={{
         left: block.position.x,
         top: block.position.y,
@@ -27,7 +40,7 @@ const AgentBlockNode = ({ block, isSelected }) => {
       <div 
         className="absolute w-4 h-4 bg-[#111118] border-2 border-[#A259FF] rounded-full left-1/2 -translate-x-1/2 -top-2 z-20 hover:scale-[2] hover:bg-[#A259FF] transition-all cursor-crosshair connection-port"
         data-port-id={block.id}
-        data-port-type="target"
+        data-port-position="top"
       />
       
       {/* Header */}
@@ -59,11 +72,25 @@ const AgentBlockNode = ({ block, isSelected }) => {
         )}
       </div>
 
-      {/* Port - Output */}
+      {/* Port - Output (Bottom) */}
       <div 
         className="absolute w-4 h-4 bg-[#111118] border-2 border-[#A259FF] rounded-full left-1/2 -translate-x-1/2 -bottom-2 z-20 hover:scale-150 hover:bg-[#A259FF] transition-all cursor-crosshair connection-port"
         data-port-id={block.id}
-        data-port-type="source"
+        data-port-position="bottom"
+      />
+
+      {/* Port - Left */}
+      <div 
+        className="absolute w-4 h-4 bg-[#111118] border-2 border-[#A259FF] rounded-full -left-2 top-1/2 -translate-y-1/2 z-20 hover:scale-150 hover:bg-[#A259FF] transition-all cursor-crosshair connection-port"
+        data-port-id={block.id}
+        data-port-position="left"
+      />
+
+      {/* Port - Right */}
+      <div 
+        className="absolute w-4 h-4 bg-[#111118] border-2 border-[#A259FF] rounded-full -right-2 top-1/2 -translate-y-1/2 z-20 hover:scale-150 hover:bg-[#A259FF] transition-all cursor-crosshair connection-port"
+        data-port-id={block.id}
+        data-port-position="right"
       />
 
       {/* Resize Handle */}
