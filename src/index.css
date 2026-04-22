@@ -24,11 +24,7 @@
 }
 
 /* ── Base Reset ──────────────────────────────────────────────────── */
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
+/* Removed overly aggressive global reset that was overriding Tailwind v4 layered utilities */
 
 body {
   background: var(--bg-base);

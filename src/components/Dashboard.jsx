@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, Plus, Star, LayoutGrid, Clock, Folder, Activity, Trash2 } from 'lucide-react';
+import { Search, Plus, Star, LayoutGrid, Clock, Folder, Activity, Trash2, User } from 'lucide-react';
 // eslint-disable-next-line no-unused-vars
 import { motion } from 'framer-motion';
 
@@ -165,13 +165,22 @@ export default function Dashboard() {
             />
           </div>
           
-          <button 
-             onClick={handleNewFlow}
-             className="bg-white text-black px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-3 hover:bg-[#DEF767] transition-all hover:-translate-y-1 shadow-[0_10px_30px_rgba(255,255,255,0.1)] active:scale-95"
-          >
-            <Plus size={18} strokeWidth={3} />
-            Initialize Sequence
-          </button>
+          <div className="flex items-center gap-4">
+            <button 
+              onClick={() => window.location.href = '/profile'}
+              className="w-12 h-12 flex items-center justify-center rounded-2xl bg-white/[0.03] border border-white/10 text-slate-400 hover:text-white hover:bg-white/10 transition-all shadow-lg hover:shadow-[0_0_20px_rgba(255,255,255,0.05)] active:scale-95"
+              title="User Profile"
+            >
+              <User size={20} />
+            </button>
+            <button 
+               onClick={handleNewFlow}
+               className="bg-white text-black px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-3 hover:bg-[#DEF767] transition-all hover:-translate-y-1 shadow-[0_10px_30px_rgba(255,255,255,0.1)] active:scale-95"
+            >
+              <Plus size={18} strokeWidth={3} />
+              Initialize Sequence
+            </button>
+          </div>
         </header>
 
         {/* ── BENTO GRID ── */}
