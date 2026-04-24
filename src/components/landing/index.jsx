@@ -8,6 +8,7 @@ import { Pricing } from './Pricing';
 import { LivePipelinePreview } from './LivePipelinePreview';
 import { RegisterView } from './RegisterView';
 import { ProfileView } from './ProfileView';
+import { supabase } from '../../lib/supabaseClient';
 
 // Helper icon
 const StarIcon = () => (
@@ -20,6 +21,33 @@ export default function LandingPage() {
   const navigate = useNavigate();
   const [view, setView] = useState('landing');
   const [user, setUser] = useState(null);
+
+  React.useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        setUser({
+           id: session.user.id,
+           email: session.user.email,
+           name: session.user.user_metadata?.full_name || 'User',
+           company: session.user.user_metadata?.company || '',
+        });
+      }
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) {
+        setUser({
+           id: session.user.id,
+           email: session.user.email,
+           name: session.user.user_metadata?.full_name || 'User',
+           company: session.user.user_metadata?.company || '',
+        });
+      } else {
+        setUser(null);
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, []);
 
   const handleInit = () => {
     if (user) {
@@ -34,7 +62,8 @@ export default function LandingPage() {
     navigate('/dashboard'); // Go to dashboard directly after register
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
     setUser(null);
     setView('landing');
   };

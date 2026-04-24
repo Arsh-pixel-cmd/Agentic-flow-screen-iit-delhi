@@ -1,16 +1,54 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { User, LogOut, Workflow, Cpu, Play } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { supabase } from '../../lib/supabaseClient';
 
-export const ProfileView = ({ user, onLogout }) => {
+export const ProfileView = ({ user: propUser, onLogout }) => {
   const navigate = useNavigate();
+  const [user, setUser] = useState(propUser || {
+    name: 'Loading...',
+    email: '...',
+    plan: 'Premium',
+    company: '...',
+    joined: '...'
+  });
+
+  useEffect(() => {
+    const fetchUser = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        // Fetch profile to get extended details
+        const { data: profile } = await supabase.from('profiles').select('*').eq('id', session.user.id).single();
+        
+        setUser({
+           name: profile?.full_name || session.user.user_metadata?.full_name || 'Agentic User',
+           email: session.user.email,
+           plan: 'Premium',
+           company: profile?.company || session.user.user_metadata?.company || 'N/A',
+           joined: profile?.created_at ? new Date(profile.created_at).toLocaleDateString() : new Date().toLocaleDateString()
+        });
+      } else {
+        navigate('/');
+      }
+    };
+    fetchUser();
+  }, [navigate]);
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    if (onLogout) {
+      onLogout();
+    } else {
+      navigate('/');
+    }
+  };
 
   return (
     <div className="min-h-screen pt-32 px-6 pb-24 relative overflow-hidden bg-[#030303]">
       <div className="max-w-4xl mx-auto relative z-10">
         <div className="flex items-center justify-between mb-12">
           <h2 className="text-4xl font-bold text-zinc-100 tracking-tight">Agentic Profile</h2>
-          <button onClick={onLogout} className="flex items-center gap-2 text-zinc-400 hover:text-white transition-colors bg-white/5 hover:bg-white/10 px-4 py-2 rounded-lg border border-white/5">
+          <button onClick={handleLogout} className="flex items-center gap-2 text-zinc-400 hover:text-white transition-colors bg-white/5 hover:bg-white/10 px-4 py-2 rounded-lg border border-white/5">
             <LogOut className="w-4 h-4" /> <span className="text-sm font-medium">Terminate Session</span>
           </button>
         </div>
@@ -30,7 +68,7 @@ export const ProfileView = ({ user, onLogout }) => {
               </div>
               <div className="flex justify-between items-center text-sm">
                 <span className="text-zinc-500">Company</span>
-                <span className="text-zinc-200">{user.company || 'N/A'}</span>
+                <span className="text-zinc-200">{user.company}</span>
               </div>
               <div className="flex justify-between items-center text-sm">
                 <span className="text-zinc-500">Joined</span>

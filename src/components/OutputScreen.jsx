@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import { X, Download, Copy, FileText, CheckCircle2 } from 'lucide-react';
 import { useWorkflowStore } from '../lib/store';
 import { WORKFLOW_PHASES } from '../data/schema';
@@ -7,24 +7,77 @@ const OutputScreen = ({ isOpen, onClose }) => {
   const contentRef = useRef(null);
   const nodeResults = useWorkflowStore(state => state.nodeResults);
   const projectPrompt = useWorkflowStore(state => state.projectPrompt);
-  const [copied, setCopied] = React.useState(false);
+  const [copied, setCopied] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
 
   if (!isOpen) return null;
 
   const handleDownloadPDF = async () => {
-    const html2pdf = (await import('html2pdf.js')).default;
-    const element = contentRef.current;
-    if (!element) return;
+    setIsDownloading(true);
+    try {
+      const printWindow = window.open('', '', 'width=800,height=600');
+      
+      const htmlContent = `
+        <html>
+          <head>
+            <title>Agentic Flow - Output Report</title>
+            <style>
+              body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 40px; color: #111; line-height: 1.6; max-width: 800px; margin: 0 auto; }
+              h1 { font-size: 28px; font-weight: 900; text-transform: uppercase; margin-bottom: 5px; letter-spacing: -0.5px; }
+              h2 { font-size: 16px; font-weight: 800; text-transform: uppercase; margin-top: 40px; border-bottom: 2px solid #111; padding-bottom: 8px; letter-spacing: 2px; }
+              .meta { font-size: 12px; color: #666; font-family: monospace; margin-bottom: 5px; }
+              .agent-box { border: 1px solid #e2e8f0; border-radius: 8px; margin-top: 15px; padding: 20px; page-break-inside: avoid; background: #fafafa; }
+              .agent-title { font-size: 11px; font-weight: 800; text-transform: uppercase; color: #475569; margin-bottom: 12px; letter-spacing: 1px; display: flex; align-items: center; gap: 8px; }
+              .agent-title::before { content: ""; display: block; width: 6px; height: 6px; border-radius: 50%; background: #A259FF; }
+              pre { white-space: pre-wrap; font-family: inherit; font-size: 13px; color: #1e293b; margin: 0; }
+              @media print { body { padding: 0; } .agent-box { border: 1px solid #ccc; } }
+            </style>
+          </head>
+          <body>
+            <h1>Agentic Flow — Output Report</h1>
+            <div class="meta">Directive: ${projectPrompt || 'Untitled Sequence'}</div>
+            <div class="meta">Date: ${new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</div>
+            
+            ${WORKFLOW_PHASES.map((phase, pIdx) => {
+              const phaseNodes = phase.categories.map(c => `${phase.id}::${c}`);
+              const phaseResults = phaseNodes
+                .map(nId => ({ id: nId, result: nodeResults[nId] }))
+                .filter(({ result }) => result);
 
-    const opt = {
-      margin: [10, 10, 10, 10],
-      filename: `agentic-flow-output-${Date.now()}.pdf`,
-      image: { type: 'jpeg', quality: 0.98 },
-      html2canvas: { scale: 2, useCORS: true, backgroundColor: '#0a0a10' },
-      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-    };
+              if (phaseResults.length === 0) return '';
+              
+              return `
+                <h2>${pIdx + 1}. ${phase.label}</h2>
+                ${phaseResults.map(({ id, result }) => {
+                  const agentName = id.split('::')[1]?.replace(/-/g, ' ');
+                  return `
+                    <div class="agent-box">
+                      <div class="agent-title">${agentName}</div>
+                      ${result.content ? `<pre>${result.content.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>` : ''}
+                    </div>
+                  `;
+                }).join('')}
+              `;
+            }).join('')}
+          </body>
+        </html>
+      `;
+      
+      printWindow.document.write(htmlContent);
+      printWindow.document.close();
+      printWindow.focus();
+      
+      setTimeout(() => {
+        printWindow.print();
+        printWindow.close();
+        setIsDownloading(false);
+      }, 250);
 
-    html2pdf().set(opt).from(element).save();
+    } catch (err) {
+      console.error("PDF Generation failed", err);
+      alert("Failed to generate PDF.");
+      setIsDownloading(false);
+    }
   };
 
   const handleCopyAll = () => {
@@ -81,9 +134,11 @@ const OutputScreen = ({ isOpen, onClose }) => {
             </button>
             <button
               onClick={handleDownloadPDF}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-[#A259FF] to-[#46B1FF] text-white text-xs font-bold uppercase tracking-wider hover:opacity-80 transition-opacity shadow-lg shadow-[#A259FF]/20"
+              disabled={isDownloading}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-[#A259FF] to-[#46B1FF] text-white text-xs font-bold uppercase tracking-wider transition-opacity shadow-lg shadow-[#A259FF]/20 ${isDownloading ? 'opacity-50 cursor-wait' : 'hover:opacity-80'}`}
             >
-              <Download size={14} /> Download PDF
+              <Download size={14} className={isDownloading ? "animate-bounce" : ""} /> 
+              {isDownloading ? 'Generating...' : 'Download PDF'}
             </button>
             <button
               onClick={onClose}

@@ -16,6 +16,7 @@ const NodePanel = ({
   state,
   task,
   onTaskChange,
+  onPromptChange,
   onRunAgent,
   nodeResult,
   isFlowRunning,
@@ -84,15 +85,16 @@ const NodePanel = ({
                 Agent Intelligence
               </span>
             </div>
-            <div
-              className="p-4 rounded-xl text-[11px] text-slate-400 leading-relaxed font-secondary h-28 overflow-y-auto no-scrollbar"
+            <textarea
+              className="w-full p-4 rounded-xl text-[11px] text-slate-300 leading-relaxed font-secondary h-28 resize-none focus:outline-none focus:border-[#46B1FF]/50 transition-colors custom-scrollbar"
               style={{
                 background: 'rgba(0,0,0,0.2)',
                 border: '1px solid rgba(255,255,255,0.04)',
               }}
-            >
-              {agent.systemPrompt}
-            </div>
+              value={agent.systemPrompt}
+              onChange={(e) => onPromptChange && onPromptChange(e.target.value)}
+              placeholder="Define agent intelligence..."
+            />
           </div>
 
           {/* ── Task Input ── */}

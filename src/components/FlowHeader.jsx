@@ -1,9 +1,44 @@
 import React from 'react';
 import { ChevronLeft, GitMerge, LayoutGrid, Layers } from 'lucide-react';
 import { useBuilderStore } from '../lib/builderStore';
+import { useWorkflowStore } from '../lib/store';
+import { supabase } from '../lib/supabaseClient';
 
 const FlowHeader = () => {
   const { viewMode, setViewMode } = useBuilderStore();
+
+  const handleSave = async () => {
+    const sequenceId = localStorage.getItem('active_sequence_id');
+    if (!sequenceId) return alert('No active sequence ID found. Cannot save.');
+    
+    const state = useBuilderStore.getState();
+    const workflowState = useWorkflowStore.getState();
+    const canvas_state = {
+      blocks: state.blocks,
+      connections: state.connections,
+      stickyNotes: state.stickyNotes,
+      textLabels: state.textLabels,
+      execution: {
+        nodeStates: workflowState.nodeStates,
+        nodeResults: workflowState.nodeResults,
+        currentPhaseIndex: workflowState.currentPhaseIndex,
+        projectPrompt: workflowState.projectPrompt
+      }
+    };
+    
+    try {
+      const { error } = await supabase
+        .from('sequences')
+        .update({ canvas_state, updated_at: new Date().toISOString() })
+        .eq('id', sequenceId);
+        
+      if (error) throw error;
+      alert('Canvas state saved successfully!');
+    } catch (err) {
+      console.error(err);
+      alert('Failed to save state');
+    }
+  };
 
   return (
     <header
@@ -74,8 +109,16 @@ const FlowHeader = () => {
         </button>
       </div>
 
-      {/* Right side spacer for flex-between balance */}
-      <div className="w-10 flex-shrink-0" />
+      {/* Right: Save Action */}
+      <div className="flex items-center gap-4 flex-shrink-0">
+        <button
+          onClick={handleSave}
+          className="bg-white/5 border border-white/10 hover:border-[#DEF767]/50 hover:bg-[#DEF767]/10 text-white px-6 py-2.5 rounded-xl text-xs font-bold uppercase tracking-widest transition-all shadow-lg flex items-center gap-2"
+        >
+          <Layers size={14} className="text-[#DEF767]" />
+          Save Configuration
+        </button>
+      </div>
     </header>
   );
 };

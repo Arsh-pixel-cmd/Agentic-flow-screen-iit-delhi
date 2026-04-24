@@ -1,9 +1,10 @@
 import { create } from 'zustand';
+import { supabase } from './supabaseClient';
 
 const generateId = () => `id_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
 
 // eslint-disable-next-line no-unused-vars
-export const useBuilderStore = create((set, _get) => ({
+export const useBuilderStore = create((set, get) => ({
   viewMode: 'pipeline', // 'pipeline' | 'builder' | 'templates'
   setViewMode: (mode) => set({ viewMode: mode, selectedElementId: null }),
 
@@ -117,37 +118,60 @@ export const useBuilderStore = create((set, _get) => ({
   // --- TEMPLATES & PIPELINE DEPLOYMENT ---
   deployedTemplateId: null,
 
-  deployProject: (name) => {
-      const templateId = generateId();
-      set((state) => {
-          const template = {
-              id: templateId,
-              name: name || 'Untitled Template',
-              blocks: JSON.parse(JSON.stringify(state.blocks)),
-              connections: JSON.parse(JSON.stringify(state.connections)),
-              is_template: true,
-              status: 'active',
-              generated_from: 'builder'
-          };
-          return {
-              templates: [...state.templates, template],
-              deployedTemplateId: templateId
-          };
-      });
+  setTemplates: (templates) => set({ templates }),
+
+  deployProject: async (name) => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return alert("Must be logged in to deploy!");
+
+      const state = get();
+      const newTemplate = {
+          user_id: session.user.id,
+          name: name || 'Untitled Template',
+          blocks: JSON.parse(JSON.stringify(state.blocks)),
+          connections: JSON.parse(JSON.stringify(state.connections)),
+          is_template: true,
+          status: 'active',
+          generated_from: 'builder'
+      };
+
+      try {
+        const { data, error } = await supabase
+          .from('templates')
+          .insert([newTemplate])
+          .select()
+          .single();
+
+        if (error) throw error;
+        
+        set((state) => ({
+            templates: [...state.templates, data],
+            deployedTemplateId: data.id
+        }));
+      } catch (err) {
+        console.error("Failed to deploy template", err);
+      }
   },
 
-  saveAsTemplate: (name) => set((state) => {
-    const template = {
-      id: generateId(),
-      name: name || 'Untitled Template',
-      blocks: JSON.parse(JSON.stringify(state.blocks)),
-      connections: JSON.parse(JSON.stringify(state.connections)),
-      is_template: true,
-      status: 'active',
-      generated_from: 'builder'
-    };
-    return { templates: [...state.templates, template] };
-  }),
+  saveAsTemplate: async (name) => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+      const state = get();
+      
+      const newTemplate = {
+          user_id: session.user.id,
+          name: name || 'Untitled Template',
+          blocks: JSON.parse(JSON.stringify(state.blocks)),
+          connections: JSON.parse(JSON.stringify(state.connections)),
+          is_template: true,
+          status: 'active',
+          generated_from: 'builder'
+      };
+      const { data } = await supabase.from('templates').insert([newTemplate]).select().single();
+      if (data) {
+         set(state => ({ templates: [...state.templates, data] }));
+      }
+  },
 
   applyTemplate: (templateId) => set((state) => {
     const template = state.templates.find(t => t.id === templateId);
@@ -177,11 +201,17 @@ export const useBuilderStore = create((set, _get) => ({
     };
   }),
   
-  updateTemplate: (id, updates) => set((state) => ({
-    templates: state.templates.map(t => t.id === id ? { ...t, ...updates } : t)
-  })),
+  updateTemplate: async (id, updates) => {
+    set((state) => ({
+      templates: state.templates.map(t => t.id === id ? { ...t, ...updates } : t)
+    }));
+    await supabase.from('templates').update(updates).eq('id', id);
+  },
 
-  deleteTemplate: (id) => set((state) => ({
-    templates: state.templates.filter(t => t.id !== id)
-  }))
+  deleteTemplate: async (id) => {
+    set((state) => ({
+      templates: state.templates.filter(t => t.id !== id)
+    }));
+    await supabase.from('templates').delete().eq('id', id);
+  }
 }));

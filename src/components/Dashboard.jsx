@@ -1,93 +1,68 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Search, Plus, Star, LayoutGrid, Clock, Folder, Activity, Trash2, User } from 'lucide-react';
 // eslint-disable-next-line no-unused-vars
 import { motion } from 'framer-motion';
-
-// --- MOCK DATA ---
-const INITIAL_MOCK_SEQUENCES = [
-  {
-    id: 'seq-1',
-    title: 'Habit Tracker Architecture',
-    status: 'Running Phase 3...',
-    statusColor: '#8B5CF6',
-    agentsActive: 12,
-    totalAgents: 16,
-    lastOrchestrated: '2 mins ago',
-    isStarred: true,
-    space: 'Personal Lab',
-  },
-  {
-    id: 'seq-2',
-    title: 'E-Commerce Funnel Optimization',
-    status: 'Neural Bridge Optimized',
-    statusColor: '#FACC15',
-    agentsActive: 16,
-    totalAgents: 16,
-    lastOrchestrated: '1 hour ago',
-    isStarred: false,
-    space: 'Marketing Automations',
-  },
-  {
-    id: 'seq-3',
-    title: 'AI Micro-SaaS Landing Page',
-    status: 'Completed',
-    statusColor: '#DEF767',
-    agentsActive: 16,
-    totalAgents: 16,
-    lastOrchestrated: 'Yesterday',
-    isStarred: true,
-    space: 'Dev Operations',
-  },
-  {
-    id: 'seq-4',
-    title: 'User Onboarding UX Flow',
-    status: 'Idle',
-    statusColor: '#46B1FF',
-    agentsActive: 0,
-    totalAgents: 16,
-    lastOrchestrated: '3 days ago',
-    isStarred: false,
-    space: 'Dev Operations',
-  }
-];
+import { supabase } from '../lib/supabaseClient';
 
 export default function Dashboard() {
   const [searchQuery, setSearchQuery] = useState('');
-  const [sequences, setSequences] = useState(() => {
-    const saved = localStorage.getItem('agentic_sequences');
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch {
-        return INITIAL_MOCK_SEQUENCES;
-      }
-    }
-    localStorage.setItem('agentic_sequences', JSON.stringify(INITIAL_MOCK_SEQUENCES));
-    return INITIAL_MOCK_SEQUENCES;
-  });
+  const [sequences, setSequences] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState(null);
 
-  const handleNewFlow = () => {
+  useEffect(() => {
+    const init = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        window.location.href = '/';
+        return;
+      }
+      setUser(session.user);
+      fetchSequences(session.user.id);
+    };
+    init();
+  }, []);
+
+  const fetchSequences = async (userId) => {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from('sequences')
+      .select('*, spaces(name)')
+      .order('updated_at', { ascending: false });
+    
+    if (data) setSequences(data);
+    setLoading(false);
+  };
+
+  const handleNewFlow = async () => {
+    if (!user) return;
+    
     const newSeq = {
-      id: `seq-${Date.now()}`,
+      user_id: user.id,
       title: 'New Neural Sequence',
       status: 'Idle',
-      statusColor: '#46B1FF',
-      agentsActive: 0,
-      totalAgents: 16,
-      lastOrchestrated: 'Just now',
-      isStarred: false,
-      space: 'Personal Lab',
+      status_color: '#46B1FF',
+      agents_active: 0,
+      total_agents: 16,
+      is_starred: false,
     };
-    const updated = [newSeq, ...sequences];
-    setSequences(updated);
-    localStorage.setItem('agentic_sequences', JSON.stringify(updated));
-    window.location.href = '/canvas'; 
+    
+    const { data, error } = await supabase
+      .from('sequences')
+      .insert([newSeq])
+      .select()
+      .single();
+      
+    if (data) {
+      setSequences([data, ...sequences]);
+      localStorage.setItem('active_sequence_id', data.id);
+      window.location.href = '/canvas'; 
+    }
   };
   
-  const handleDelete = (id) => {
-    const updated = sequences.filter(seq => seq.id !== id);
-    setSequences(updated);
-    localStorage.setItem('agentic_sequences', JSON.stringify(updated));
+  const handleDelete = async (id) => {
+    setSequences(sequences.filter(seq => seq.id !== id));
+    await supabase.from('sequences').delete().eq('id', id);
   };
 
   return (
@@ -195,11 +170,17 @@ export default function Dashboard() {
             </div>
           </div>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-8">
-             {sequences.filter(seq => seq.title.toLowerCase().includes(searchQuery.toLowerCase())).map((seq, i) => (
-               <SessionCard key={seq.id} sequence={seq} index={i} onDelete={handleDelete} />
-             ))}
-          </div>
+          {loading ? (
+            <div className="flex justify-center items-center h-40">
+              <div className="w-8 h-8 border-4 border-[#A259FF] border-t-transparent rounded-full animate-spin"></div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-8">
+               {sequences.filter(seq => seq.title.toLowerCase().includes(searchQuery.toLowerCase())).map((seq, i) => (
+                 <SessionCard key={seq.id} sequence={seq} index={i} onDelete={handleDelete} />
+               ))}
+            </div>
+          )}
         </div>
       </main>
     </div>
@@ -219,10 +200,25 @@ function SidebarItem({ icon, title, active }) {
 // Session Card Component
 function SessionCard({ sequence, index, onDelete }) {
   const isComplete = sequence.status === 'Completed';
+  const statusColor = sequence.status_color || sequence.statusColor;
+  const isStarred = sequence.is_starred || sequence.isStarred;
+  const agentsActive = sequence.agents_active || sequence.agentsActive || 0;
+  const totalAgents = sequence.total_agents || sequence.totalAgents || 16;
+  const spaceName = sequence.spaces?.name || sequence.space || 'Personal Lab';
+
+  const formatDate = (dateString) => {
+    if (!dateString) return 'Just now';
+    if (dateString.includes('ago') || dateString === 'Yesterday') return dateString;
+    const date = new Date(dateString);
+    return date.toLocaleDateString();
+  };
 
   return (
     <motion.div 
-      onClick={() => window.location.href = '/canvas'}
+      onClick={() => {
+        localStorage.setItem('active_sequence_id', sequence.id);
+        window.location.href = '/canvas';
+      }}
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5, delay: index * 0.05 }}
@@ -234,7 +230,7 @@ function SessionCard({ sequence, index, onDelete }) {
 
       <div className="flex justify-between items-start z-10 relative mb-6">
         <div className="p-3 rounded-2xl bg-white/[0.03] border border-white/[0.05]">
-           <Activity size={20} style={{ color: sequence.statusColor }} />
+           <Activity size={20} style={{ color: statusColor }} />
         </div>
         <div className="flex items-center gap-2">
           <button 
@@ -246,39 +242,39 @@ function SessionCard({ sequence, index, onDelete }) {
           </button>
           <button 
              onClick={(e) => { e.stopPropagation(); }}
-             className={`w-10 h-10 flex items-center justify-center rounded-xl transition-all relative z-20 ${sequence.isStarred ? 'text-[#FACC15] bg-[#FACC15]/10' : 'text-slate-600 hover:text-white hover:bg-white/5'}`}
+             className={`w-10 h-10 flex items-center justify-center rounded-xl transition-all relative z-20 ${isStarred ? 'text-[#FACC15] bg-[#FACC15]/10' : 'text-slate-600 hover:text-white hover:bg-white/5'}`}
           >
-            <Star size={18} fill={sequence.isStarred ? 'currentColor' : 'none'} strokeWidth={2} />
+            <Star size={18} fill={isStarred ? 'currentColor' : 'none'} strokeWidth={2} />
           </button>
         </div>
       </div>
 
       <div className="z-10 relative">
         <h3 className="text-[20px] font-black text-white font-display leading-[1.2] mb-3 group-hover:text-[#A259FF] transition-colors">{sequence.title}</h3>
-        <p className="text-[11px] text-slate-500 font-secondary font-bold uppercase tracking-widest">{sequence.space}</p>
+        <p className="text-[11px] text-slate-500 font-secondary font-bold uppercase tracking-widest">{spaceName}</p>
       </div>
 
       <div className="mt-auto z-10 relative pt-8">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
             <div className="relative flex h-2 w-2">
-              {!isComplete && sequence.status !== 'Idle' && <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75" style={{ backgroundColor: sequence.statusColor }}></span>}
-              <span className="relative inline-flex rounded-full h-2 w-2" style={{ backgroundColor: sequence.statusColor }}></span>
+              {!isComplete && sequence.status !== 'Idle' && <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75" style={{ backgroundColor: statusColor }}></span>}
+              <span className="relative inline-flex rounded-full h-2 w-2" style={{ backgroundColor: statusColor }}></span>
             </div>
-            <span className="text-[10px] uppercase tracking-widest font-black" style={{ color: sequence.statusColor }}>
+            <span className="text-[10px] uppercase tracking-widest font-black" style={{ color: statusColor }}>
               {sequence.status}
             </span>
           </div>
-          <span className="text-[10px] text-slate-600 font-black uppercase tracking-tighter">Updated {sequence.lastOrchestrated}</span>
+          <span className="text-[10px] text-slate-600 font-black uppercase tracking-tighter">Updated {formatDate(sequence.updated_at || sequence.lastOrchestrated)}</span>
         </div>
 
         <div className="w-full h-1 bg-white/[0.03] rounded-full overflow-hidden">
           <div 
             className="h-full transition-all duration-1000 ease-out" 
             style={{ 
-              width: `${(sequence.agentsActive / sequence.totalAgents) * 100}%`,
-              backgroundColor: sequence.statusColor,
-              boxShadow: `0 0 10px ${sequence.statusColor}`
+              width: `${(agentsActive / totalAgents) * 100}%`,
+              backgroundColor: statusColor,
+              boxShadow: `0 0 10px ${statusColor}`
             }} 
           />
         </div>

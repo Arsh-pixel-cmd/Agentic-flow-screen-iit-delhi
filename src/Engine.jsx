@@ -67,16 +67,89 @@ const Engine = () => {
 
   // Boot validation
   useEffect(() => {
-    try {
-      setGraphStatus('loading');
-      validateGraph();
-      setGraphStatus('ready');
-    } catch (e) {
-      console.error(e);
-      setInitError(e.message);
-      setGraphStatus('error');
-    }
+    const loadCanvasData = async () => {
+      try {
+        setGraphStatus('loading');
+        const seqId = localStorage.getItem('active_sequence_id');
+        if (seqId) {
+          const { supabase } = await import('./lib/supabaseClient');
+          const { data } = await supabase.from('sequences').select('canvas_state, name').eq('id', seqId).single();
+          if (data?.canvas_state) {
+             const state = data.canvas_state;
+             useBuilderStore.setState({
+               blocks: state.blocks || [],
+               connections: state.connections || [],
+               stickyNotes: state.stickyNotes || [],
+               textLabels: state.textLabels || [],
+             });
+             
+             // Restore the agent outputs and progress!
+             if (state.execution) {
+               useWorkflowStore.setState({
+                 nodeStates: state.execution.nodeStates || {},
+                 nodeResults: state.execution.nodeResults || {},
+                 currentPhaseIndex: state.execution.currentPhaseIndex || 0,
+                 projectPrompt: state.execution.projectPrompt || (data.name !== 'New Neural Sequence' ? data.name : '')
+               });
+             } else if (data.name && data.name !== 'New Neural Sequence') {
+               useWorkflowStore.setState({ projectPrompt: data.name });
+             }
+          }
+          
+          // Fetch templates for the user
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session) {
+             const { data: templates } = await supabase.from('templates').select('*').eq('user_id', session.user.id).order('created_at', { ascending: false });
+             if (templates) {
+                 useBuilderStore.setState({ templates });
+             }
+          }
+        }
+        validateGraph();
+        setGraphStatus('ready');
+      } catch (e) {
+        console.error(e);
+        setInitError(e.message);
+        setGraphStatus('error');
+      }
+    };
+    loadCanvasData();
   }, [setGraphStatus]);
+
+  // --- AUTO-SAVE BACKGROUND ENGINE ---
+  useEffect(() => {
+    const seqId = localStorage.getItem('active_sequence_id');
+    if (!seqId || graphStatus === 'loading') return;
+
+    // Debounce the save to prevent hammering the database
+    const timer = setTimeout(async () => {
+      try {
+        const { supabase } = await import('./lib/supabaseClient');
+        const state = useBuilderStore.getState();
+        const workflowState = useWorkflowStore.getState();
+        
+        const canvas_state = {
+          blocks: state.blocks,
+          connections: state.connections,
+          stickyNotes: state.stickyNotes,
+          textLabels: state.textLabels,
+          execution: {
+            nodeStates: workflowState.nodeStates,
+            nodeResults: workflowState.nodeResults,
+            currentPhaseIndex: workflowState.currentPhaseIndex,
+            projectPrompt: workflowState.projectPrompt
+          }
+        };
+        
+        await supabase.from('sequences').update({ canvas_state }).eq('id', seqId);
+      } catch (err) {
+        console.error("Auto-save failed", err);
+      }
+    }, 2000); // 2-second debounce
+
+    return () => clearTimeout(timer);
+  }, [nodeResults, nodeStates, graphStatus, currentPhaseIndex, projectPrompt]);
+
 
   const deployedTemplateId = useBuilderStore(state => state.deployedTemplateId);
   const templates = useBuilderStore(state => state.templates);
@@ -322,6 +395,18 @@ const Engine = () => {
     if (!projectPrompt || projectPrompt.trim() === '') {
       alert("Please enter a custom project directive in the top bar first!");
       return;
+    }
+
+    // Update sequence title in Supabase to match the prompt
+    try {
+      const { supabase } = await import('./lib/supabaseClient');
+      const seqId = localStorage.getItem('active_sequence_id');
+      if (seqId && projectPrompt.trim().length > 0) {
+        const newName = projectPrompt.trim().substring(0, 50) + (projectPrompt.trim().length > 50 ? '...' : '');
+        await supabase.from('sequences').update({ name: newName }).eq('id', seqId);
+      }
+    } catch(err) {
+      console.error("Failed to update sequence name", err);
     }
 
     store.setGraphStatus('running');

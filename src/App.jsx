@@ -15,18 +15,7 @@ export default function App() {
         {/* Your two clean pages */}
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/canvas" element={<Engine />} />
-        <Route path="/profile" element={
-          <ProfileView 
-            user={{
-              name: 'Agentic User',
-              email: 'user@agenticflow.ai',
-              plan: 'Premium',
-              company: 'Neural Labs',
-              joined: new Date().toLocaleDateString()
-            }} 
-            onLogout={() => window.location.href = '/'} 
-          />
-        } />
+        <Route path="/profile" element={<ProfileView />} />
       </Routes>
     </div>
   );
