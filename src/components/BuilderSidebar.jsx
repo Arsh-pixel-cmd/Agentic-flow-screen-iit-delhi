@@ -4,10 +4,10 @@ import { useBuilderStore } from '../lib/builderStore';
 import { Settings, Play, Clock, Key, Trash2, Download, Loader2 } from 'lucide-react';
 
 const BuilderSidebar = () => {
-  const { blocks, connections, selectedElementId, setSelectedElementId, updateBlock, deleteBlock, deleteConnection, setNodeStatus, setNodeResult, resetExecution } = useBuilderStore();
+  const { blocks, connections, selectedElementId, setSelectedElementId, updateBlock, deleteBlock, deleteConnection } = useBuilderStore();
   
   const [showResultOverlay, setShowResultOverlay] = useState(false);
-  const [globalContextLog, setGlobalContextLog] = useState("");
+  const [globalContextLog] = useState("");
   const [isDeploying, setIsDeploying] = useState(false);
 
   const setViewMode = useBuilderStore(state => state.setViewMode);

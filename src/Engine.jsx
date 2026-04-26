@@ -11,6 +11,8 @@ import { computeLayout } from './lib/layoutEngine';
 import { computeEdgePath, bundleEdges } from './lib/edgeRouter';
 import { useWorkflowStore, selectActiveNodeId } from './lib/store';
 import { callLLM } from './lib/llm';
+import { supabase } from './lib/supabaseClient';
+import html2canvas from 'html2canvas';
 
 // Components
 import FlowHeader from './components/FlowHeader';
@@ -72,7 +74,6 @@ const Engine = () => {
         setGraphStatus('loading');
         const seqId = localStorage.getItem('active_sequence_id');
         if (seqId) {
-          const { supabase } = await import('./lib/supabaseClient');
           const { data } = await supabase.from('sequences').select('canvas_state, name').eq('id', seqId).single();
           if (data?.canvas_state) {
              const state = data.canvas_state;
@@ -124,7 +125,6 @@ const Engine = () => {
     // Debounce the save to prevent hammering the database
     const timer = setTimeout(async () => {
       try {
-        const { supabase } = await import('./lib/supabaseClient');
         const state = useBuilderStore.getState();
         const workflowState = useWorkflowStore.getState();
         
@@ -321,15 +321,7 @@ const Engine = () => {
       const coords = getCanvasCoords(e.clientX, e.clientY);
       setCurrentStroke([coords]);
     }
-    if (activeTool === 'cursor') {
-      e.stopPropagation();
-      const coords = getCanvasCoords(e.clientX, e.clientY);
-      if (note) {
-        selectNode(`sticky-${note.id}`);
-        setDraggingAppElement({ type: 'sticky', id: note.id, startX: note.x, startY: note.y, startMouseX: coords.x, startMouseY: coords.y });
-      }
-    }
-  }, [activeTool, getCanvasCoords, selectNode]);
+  }, [activeTool, canvasLocked, viewMode, getCanvasCoords]);
 
   const handleMouseMove = useCallback(
     (e) => {
@@ -367,7 +359,7 @@ const Engine = () => {
         setCurrentStroke(prev => [...prev, coords]);
       }
     },
-    [isPanning, isDrawing, activeTool, getCanvasCoords]
+    [isPanning, isDrawing, activeTool, getCanvasCoords, draggingAppElement, resizingAppElement]
   );
 
   const handleMouseUp = useCallback(() => {
@@ -386,7 +378,7 @@ const Engine = () => {
         }, 2500);
       }
     }
-  }, [isPanning, isDrawing, currentStroke]);
+  }, [isPanning, isDrawing, currentStroke, draggingAppElement, resizingAppElement]);
 
   const runFullPipeline = useCallback(async () => {
     if (!layout || graphStatus === 'running') return;
@@ -399,7 +391,6 @@ const Engine = () => {
 
     // Update sequence title in Supabase to match the prompt
     try {
-      const { supabase } = await import('./lib/supabaseClient');
       const seqId = localStorage.getItem('active_sequence_id');
       if (seqId && projectPrompt.trim().length > 0) {
         const newName = projectPrompt.trim().substring(0, 50) + (projectPrompt.trim().length > 50 ? '...' : '');
@@ -564,7 +555,7 @@ const Engine = () => {
     }());
     
     setTimeout(() => setShowOutputScreen(true), 2500);
-  }, [layout, graphStatus, currentPhaseIndex, projectPrompt, deployedTemplateId, templates]);
+  }, [layout, graphStatus, projectPrompt, deployedTemplateId, templates]);
 
   const rebootSequence = () => {
     const store = useWorkflowStore.getState();
@@ -805,7 +796,6 @@ const Engine = () => {
           setCurrentStroke(null);
         }}
         onScreenshot={async () => {
-          const html2canvas = (await import('html2canvas')).default;
           const canvas = canvasRef.current;
           if (!canvas) return;
           const shot = await html2canvas(canvas, { backgroundColor: '#0a0a10', useCORS: true });

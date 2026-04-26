@@ -1,3 +1,26 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build Outputs
+dist/
+dist-ssr/
+build/
+coverage/
+
+# Local env files (Secrets)
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+*.pem
+*.key
+*.cert
+credentials.json
+secrets.json
+
 # Logs
 logs
 *.log
@@ -7,20 +30,29 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-node_modules
-dist
-.env
-.env.*
-dist-ssr
-*.local
+# OS Files
+.DS_Store
+*.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
 
-# Editor directories and files
+# Editor & IDE directories
 .vscode/*
 !.vscode/extensions.json
-.idea
-.DS_Store
+.idea/
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
+
+# AI / IDE Agent states
+.gemini/
+.aider*
+.cursor/
+
+# Testing
+/coverage
+/.nyc_output

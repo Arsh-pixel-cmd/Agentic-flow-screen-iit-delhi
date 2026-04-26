@@ -1,6 +1,7 @@
 import React from 'react';
 import { Search, Eye, Star, BarChart, Layout, Target, Satellite, Map, Smartphone, Image as ImageIcon, Link, Compass, FlaskConical, CheckSquare, Microscope, ClipboardList } from 'lucide-react';
 
+// eslint-disable-next-line no-unused-vars
 const PipelineCard = ({ title, icon: Icon, iconColor, isHighlighted }) => (
   <div className="bg-[#111116]/80 border border-white/[0.03] rounded-xl p-3.5 flex items-center gap-4 hover:bg-white/[0.05] hover:border-white/10 transition-all duration-300 group cursor-default">
     <div className={`relative w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 bg-[#1A1A24] border border-white/5 shadow-inner`}>

@@ -17,7 +17,7 @@ function saveUserProfile(profile) {
   localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
 }
 
-function clearUserProfile() {
+function _clearUserProfile() {
   localStorage.removeItem(PROFILE_KEY);
 }
 

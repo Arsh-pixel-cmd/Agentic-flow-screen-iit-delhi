@@ -10,6 +10,17 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState(null);
 
+  const fetchSequences = async () => {
+    setLoading(true);
+    const { data, error: _error } = await supabase
+      .from('sequences')
+      .select('*, spaces(name)')
+      .order('updated_at', { ascending: false });
+    
+    if (data) setSequences(data);
+    setLoading(false);
+  };
+
   useEffect(() => {
     const init = async () => {
       const { data: { session } } = await supabase.auth.getSession();
@@ -18,21 +29,10 @@ export default function Dashboard() {
         return;
       }
       setUser(session.user);
-      fetchSequences(session.user.id);
+      fetchSequences();
     };
     init();
   }, []);
-
-  const fetchSequences = async (userId) => {
-    setLoading(true);
-    const { data, error } = await supabase
-      .from('sequences')
-      .select('*, spaces(name)')
-      .order('updated_at', { ascending: false });
-    
-    if (data) setSequences(data);
-    setLoading(false);
-  };
 
   const handleNewFlow = async () => {
     if (!user) return;
@@ -47,7 +47,7 @@ export default function Dashboard() {
       is_starred: false,
     };
     
-    const { data, error } = await supabase
+    const { data, error: _insertError } = await supabase
       .from('sequences')
       .insert([newSeq])
       .select()

@@ -179,8 +179,7 @@ const BuilderCanvas = ({ activeTool, setActiveTool, getCanvasCoords }) => {
       const tgtH = tgtBlock.size?.height || 150;
 
       const isSrcAbove = srcBlock.position.y + srcH / 2 <= tgtBlock.position.y + tgtH / 2;
-      const isSrcLeft = srcBlock.position.x + srcW / 2 <= tgtBlock.position.x + tgtW / 2;
-      
+
       const sPort = conn.sourcePort || (isSrcAbove ? 'bottom' : 'top');
       const tPort = conn.targetPort || (isSrcAbove ? 'top' : 'bottom');
 

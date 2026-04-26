@@ -3,7 +3,6 @@ import { supabase } from './supabaseClient';
 
 const generateId = () => `id_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
 
-// eslint-disable-next-line no-unused-vars
 export const useBuilderStore = create((set, get) => ({
   viewMode: 'pipeline', // 'pipeline' | 'builder' | 'templates'
   setViewMode: (mode) => set({ viewMode: mode, selectedElementId: null }),

@@ -86,6 +86,7 @@ const ThinkingTerminal = ({ node, isRunning }) => {
                 const token = parsed.choices?.[0]?.delta?.content || '';
                 setText(prev => prev + token);
               } catch {
+                // Ignore partial JSON chunks from SSE stream
               }
             }
           }
