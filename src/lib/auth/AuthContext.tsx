@@ -2,7 +2,20 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import { Navigate } from 'react-router-dom';
 
 // ─── Context ────────────────────────────────────────────────
-const AuthContext = createContext(null);
+export interface AuthContextType {
+  user: any;
+  loading: boolean;
+  isAuthenticated: boolean;
+  signUp: (data: any) => Promise<any>;
+  signIn: (credentials: any) => Promise<any>;
+  signInWithProvider: (provider: any) => Promise<any>;
+  signOut: () => Promise<any>;
+  getProfile: (userId: any) => Promise<any>;
+  updateProfile: (userId: any, data: any) => Promise<any>;
+  getAccessToken: () => Promise<any>;
+}
+
+const AuthContext = createContext<AuthContextType | null>(null);
 
 // ─── Provider ───────────────────────────────────────────────
 export const AuthProvider = ({ children, adapter }) => {

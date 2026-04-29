@@ -3,7 +3,43 @@ import { supabase } from './supabaseClient';
 
 const generateId = () => `id_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
 
-export const useBuilderStore = create((set, get) => ({
+export interface BuilderStore {
+  viewMode: string;
+  setViewMode: (mode: string) => void;
+  blocks: any[];
+  connections: any[];
+  stickyNotes: any[];
+  textLabels: any[];
+  templates: any[];
+  nodeStatus: Record<string, string>;
+  nodeResults: Record<string, any>;
+  setNodeStatus: (id: string, status: string) => void;
+  setNodeResult: (id: string, result: any) => void;
+  resetExecution: () => void;
+  selectedElementId: string | null;
+  setSelectedElementId: (id: string | null) => void;
+  addTextLabel: (position: any) => void;
+  updateTextLabel: (id: string, text: string) => void;
+  deleteTextLabel: (id: string) => void;
+  addBlock: (position?: any) => void;
+  updateBlock: (id: string, updates: any) => void;
+  deleteBlock: (id: string) => void;
+  connectBlocks: (sourceId: string, targetId: string, sourcePort: string, targetPort: string) => void;
+  deleteConnection: (id: string) => void;
+  addStickyNote: (position?: any) => void;
+  updateStickyNote: (id: string, updates: any) => void;
+  deleteStickyNote: (id: string) => void;
+  clearAnnotations: () => void;
+  deployedTemplateId: string | null;
+  setTemplates: (templates: any[]) => void;
+  deployProject: (name?: string) => Promise<void>;
+  saveAsTemplate: (name?: string) => Promise<void>;
+  applyTemplate: (templateId: string) => void;
+  updateTemplate: (id: string, updates: any) => Promise<void>;
+  deleteTemplate: (id: string) => Promise<void>;
+}
+
+export const useBuilderStore = create<BuilderStore>((set, get) => ({
   viewMode: 'pipeline', // 'pipeline' | 'builder' | 'templates'
   setViewMode: (mode) => set({ viewMode: mode, selectedElementId: null }),
 

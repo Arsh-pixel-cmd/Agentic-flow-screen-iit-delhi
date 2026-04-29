@@ -35,8 +35,8 @@ interface NodeContainerProps {
 }
 
 const NodeContainer = ({ node, state, onClick, isVisible = true }: NodeContainerProps) => {
-  const IconComponent = ICON_MAP[node.icon] || Box;
-  const phaseColor = PHASE_COLORS[node.phase] || PHASE_COLORS['discover'];
+  const IconComponent = ICON_MAP[node.icon as keyof typeof ICON_MAP] || Box;
+  const phaseColor = PHASE_COLORS[node.phase as keyof typeof PHASE_COLORS] || PHASE_COLORS['discover'];
 
   const stateClass =
     state === 'running'

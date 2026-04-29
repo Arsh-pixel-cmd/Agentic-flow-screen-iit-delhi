@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { User, Key, ArrowRight, Sparkles } from 'lucide-react';
-import { saveKeys } from '../lib/llm';
+// saveKeys has been deprecated in favor of the /api/keys backend endpoint
 
 const PROFILE_KEY = 'agentic_user_profile';
 
@@ -39,15 +39,9 @@ const AuthGate = ({ children }: AuthGateProps) => {
     const newProfile = { name, email, createdAt: Date.now() };
     saveUserProfile(newProfile);
     
-    // Save API key if provided
+    // Save API key if provided (Deprecated locally - use ProfileView to sync to backend)
     if (apiKey.trim()) {
-      if (apiKey.startsWith('sk-or-')) {
-        saveKeys({ openrouterKey: apiKey.trim() });
-      } else if (apiKey.startsWith('gsk_')) {
-        saveKeys({ groqKey: apiKey.trim() });
-      } else {
-        saveKeys({ openrouterKey: apiKey.trim() });
-      }
+      console.warn("API key saving via AuthGate is deprecated.");
     }
     
     setProfile(newProfile);

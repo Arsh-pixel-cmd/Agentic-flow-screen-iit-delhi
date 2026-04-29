@@ -1,4 +1,4 @@
-import React from 'react';
+
 import { Settings, Play, Clock } from 'lucide-react';
 import { useBuilderStore } from '../lib/builderStore';
 
@@ -8,8 +8,8 @@ interface BlockData {
   description?: string;
   position: { x: number; y: number };
   size?: { width?: number; height?: number };
-  triggerConfig: { type: string; [key: string]: any };
-  waitConfig: { type: string; [key: string]: any };
+  triggerConfig: { type: string;[key: string]: any };
+  waitConfig: { type: string;[key: string]: any };
   [key: string]: any;
 }
 
@@ -26,19 +26,20 @@ const AgentBlockNode = ({ block, isSelected }: AgentBlockNodeProps) => {
 
   let borderClasses = 'border-white/[0.04] bg-[#111118] hover:border-white/20 shadow-xl z-10';
   let pulseClass = '';
-  
+
   if (isSelected) {
-      borderClasses = 'border-[#A259FF] bg-[#181824] shadow-[0_0_30px_rgba(162,89,255,0.4)] z-50';
+    borderClasses = 'border-[#A259FF] bg-[#181824] shadow-[0_0_30px_rgba(162,89,255,0.4)] z-50';
   } else if (status === 'running') {
-      borderClasses = 'border-[#F6E27F] bg-[#181824] shadow-[0_0_30px_rgba(246,226,127,0.4)] z-40';
-      pulseClass = 'animate-pulse';
+    borderClasses = 'border-[#F6E27F] bg-[#181824] shadow-[0_0_30px_rgba(246,226,127,0.4)] z-40';
+    pulseClass = 'animate-pulse';
   } else if (status === 'success') {
-      borderClasses = 'border-[#DEF767] bg-[#111118] shadow-[0_0_20px_rgba(222,247,103,0.2)] z-30';
+    borderClasses = 'border-[#DEF767] bg-[#111118] shadow-[0_0_20px_rgba(222,247,103,0.2)] z-30';
   } else if (status === 'error') {
-      borderClasses = 'border-[#ff4b4b] bg-[#111118] shadow-[0_0_20px_rgba(255,75,75,0.2)] z-30';
+    borderClasses = 'border-[#ff4b4b] bg-[#111118] shadow-[0_0_20px_rgba(255,75,75,0.2)] z-30';
   }
 
   return (
+    // eslint-disable-next-line
     <div
       onClick={(e) => {
         e.stopPropagation();
@@ -53,12 +54,12 @@ const AgentBlockNode = ({ block, isSelected }: AgentBlockNodeProps) => {
       }}
     >
       {/* Port - Input */}
-      <div 
+      <div
         className="absolute w-4 h-4 bg-[#111118] border-2 border-[#A259FF] rounded-full left-1/2 -translate-x-1/2 -top-2 z-20 hover:scale-[2] hover:bg-[#A259FF] transition-all cursor-crosshair connection-port"
         data-port-id={block.id}
         data-port-position="top"
       />
-      
+
       {/* Header */}
       <div className="flex items-start justify-between mb-4 pb-3">
         <div className="flex items-center gap-3">
@@ -70,7 +71,7 @@ const AgentBlockNode = ({ block, isSelected }: AgentBlockNodeProps) => {
           </h3>
         </div>
       </div>
-      
+
       {/* Body */}
       <p className="text-[11px] text-slate-400 line-clamp-3 min-h-[48px] font-secondary mb-4 leading-relaxed">
         {block.description || 'No description provided.'}
@@ -83,33 +84,34 @@ const AgentBlockNode = ({ block, isSelected }: AgentBlockNodeProps) => {
         </div>
         {(block.waitConfig.type !== 'none') && (
           <div className="flex items-center gap-1.5 bg-white/5 hover:bg-white/10 transition-colors px-2.5 py-1.5 rounded-md">
-             <Clock size={10} className="text-[#DEF767]" /> {block.waitConfig.type.substring(0, 4)}
+            <Clock size={10} className="text-[#DEF767]" /> {block.waitConfig.type.substring(0, 4)}
           </div>
         )}
       </div>
 
       {/* Port - Output (Bottom) */}
-      <div 
+      <div
         className="absolute w-4 h-4 bg-[#111118] border-2 border-[#A259FF] rounded-full left-1/2 -translate-x-1/2 -bottom-2 z-20 hover:scale-150 hover:bg-[#A259FF] transition-all cursor-crosshair connection-port"
         data-port-id={block.id}
         data-port-position="bottom"
       />
 
       {/* Port - Left */}
-      <div 
+      <div
         className="absolute w-4 h-4 bg-[#111118] border-2 border-[#A259FF] rounded-full -left-2 top-1/2 -translate-y-1/2 z-20 hover:scale-150 hover:bg-[#A259FF] transition-all cursor-crosshair connection-port"
         data-port-id={block.id}
         data-port-position="left"
       />
 
       {/* Port - Right */}
-      <div 
+      <div
         className="absolute w-4 h-4 bg-[#111118] border-2 border-[#A259FF] rounded-full -right-2 top-1/2 -translate-y-1/2 z-20 hover:scale-150 hover:bg-[#A259FF] transition-all cursor-crosshair connection-port"
         data-port-id={block.id}
         data-port-position="right"
       />
 
       {/* Resize Handle */}
+      {/* eslint-disable-next-line */}
       <div
         className="resize-handle absolute bottom-0 right-0 w-5 h-5 cursor-nwse-resize opacity-0 group-hover:opacity-100 transition-opacity z-30"
         style={{

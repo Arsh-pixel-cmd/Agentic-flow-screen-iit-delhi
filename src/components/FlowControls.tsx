@@ -50,7 +50,7 @@ const FlowControls = ({ setCamera, camera }: FlowControlsProps) => {
         image:        { type: 'jpeg', quality: 0.98 },
         html2canvas:  { scale: 2, useCORS: true, backgroundColor: '#0a0a10' },
         jsPDF:        { unit: 'mm', format: 'a4', orientation: 'landscape' }
-      };
+      } as const;
       await html2pdf().set(opt).from(canvasElement).save();
     } catch (e) {
       console.error('PDF export failed', e);

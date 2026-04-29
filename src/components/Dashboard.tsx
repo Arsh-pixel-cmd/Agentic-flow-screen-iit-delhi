@@ -91,7 +91,7 @@ export default function Dashboard() {
           <div className="space-y-1">
              <div className="flex items-center justify-between ml-4 mb-4">
                <span className="text-[10px] uppercase tracking-[0.25em] text-slate-600 font-black">Project Spaces</span>
-               <button className="text-slate-500 hover:text-white transition-colors p-1"><Plus size={14} /></button>
+                <button aria-label="Add project space" title="Add project space" className="text-slate-500 hover:text-white transition-colors p-1"><Plus size={14} /></button>
              </div>
              <SidebarItem icon={<Folder size={18} className="text-[#A259FF]" />} title="Marketing Workflows" />
              <SidebarItem icon={<Folder size={18} className="text-[#46B1FF]" />} title="Dev-Ops Pipelines" />
@@ -137,6 +137,7 @@ export default function Dashboard() {
             <button 
               onClick={() => window.location.href = '/profile'}
               className="w-12 h-12 flex items-center justify-center rounded-2xl bg-white/[0.03] border border-white/10 text-slate-400 hover:text-white hover:bg-white/10 transition-all shadow-lg hover:shadow-[0_0_20px_rgba(255,255,255,0.05)] active:scale-95"
+              aria-label="User Profile"
               title="User Profile"
             >
               <User size={20} />
@@ -159,7 +160,7 @@ export default function Dashboard() {
                <span className="px-3 py-1 rounded-full bg-white/5 border border-white/10 text-[10px] font-black text-slate-500 uppercase tracking-widest">{sequences.length}</span>
             </h2>
             <div className="flex items-center gap-3">
-               <button className="p-2.5 rounded-xl bg-white/5 text-slate-500 hover:text-white transition-colors border border-white/5"><Activity size={18} /></button>
+               <button aria-label="Activity summary" title="Activity summary" className="p-2.5 rounded-xl bg-white/5 text-slate-500 hover:text-white transition-colors border border-white/5"><Activity size={18} /></button>
             </div>
           </div>
           
@@ -247,6 +248,8 @@ function SessionCard({ sequence, index, onDelete }: SessionCardProps) {
           </button>
           <button 
              onClick={(e) => { e.stopPropagation(); }}
+             aria-label={isStarred ? "Unstar sequence" : "Star sequence"}
+             title={isStarred ? "Unstar sequence" : "Star sequence"}
              className={`w-10 h-10 flex items-center justify-center rounded-xl transition-all relative z-20 ${isStarred ? 'text-[#FACC15] bg-[#FACC15]/10' : 'text-slate-600 hover:text-white hover:bg-white/5'}`}
           >
             <Star size={18} fill={isStarred ? 'currentColor' : 'none'} strokeWidth={2} />
@@ -274,6 +277,7 @@ function SessionCard({ sequence, index, onDelete }: SessionCardProps) {
         </div>
 
         <div className="w-full h-1 bg-white/[0.03] rounded-full overflow-hidden">
+          {/* eslint-disable-next-line */}
           <div 
             className="h-full transition-all duration-1000 ease-out" 
             style={{ 

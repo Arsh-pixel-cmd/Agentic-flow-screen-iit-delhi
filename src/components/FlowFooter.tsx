@@ -1,5 +1,4 @@
 import React, { useRef, useEffect } from 'react';
-import { Terminal } from 'lucide-react';
 
 interface LogEntry {
   id?: string | number;
@@ -44,16 +43,16 @@ const FlowFooter = ({ flowStatus, logs, completedCount, totalCount }: FlowFooter
         <div className="flex items-center gap-2.5">
           <div
             className={`w-1.5 h-1.5 rounded-full ${flowStatus === 'running' ? 'status-running' : ''}`}
-            style={{ 
-              background: statusColor[flowStatus] || '#46B1FF',
-              boxShadow: flowStatus !== 'idle' ? `0 0 12px ${statusColor[flowStatus]}` : 'none'
+            style={{
+              background: statusColor[flowStatus as keyof typeof statusColor] || '#46B1FF',
+              boxShadow: flowStatus !== 'idle' ? `0 0 12px ${statusColor[flowStatus as keyof typeof statusColor]}` : 'none'
             }}
           />
           <span
             className="text-[10px] font-bold tracking-wider uppercase font-secondary"
-            style={{ color: statusColor[flowStatus] }}
+            style={{ color: statusColor[flowStatus as keyof typeof statusColor] }}
           >
-            {statusText[flowStatus] || 'Standby'}
+            {statusText[flowStatus as keyof typeof statusText] || 'Standby'}
           </span>
         </div>
         <div className="h-3 w-px bg-white/10" />
@@ -79,10 +78,10 @@ const FlowFooter = ({ flowStatus, logs, completedCount, totalCount }: FlowFooter
                   log.type === 'success'
                     ? '#DEF767'
                     : log.type === 'error'
-                    ? '#FF6A6A'
-                    : log.type === 'info'
-                    ? '#46B1FF'
-                    : '#CEA3FF',
+                      ? '#FF6A6A'
+                      : log.type === 'info'
+                        ? '#46B1FF'
+                        : '#CEA3FF',
               }}
             >
               [{new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}] {log.text}

@@ -12,7 +12,7 @@ const FlowHeader = () => {
     if (!sequenceId) return alert('No active sequence ID found. Cannot save.');
     
     const state = useBuilderStore.getState();
-    const workflowState = useWorkflowStore.getState();
+    const workflowState: any = useWorkflowStore.getState();
     const canvas_state = {
       blocks: state.blocks,
       connections: state.connections,

@@ -65,7 +65,7 @@ const BuilderCanvas = ({ activeTool, setActiveTool, getCanvasCoords }: BuilderCa
 
       if (wiringState) {
         const coords = getCanvasCoords(e.clientX, e.clientY);
-        setWiringState(prev => ({ ...prev, currentMousePos: coords }));
+        setWiringState(prev => prev ? { ...prev, currentMousePos: coords } : null);
       }
 
       if (resizingElement) {
@@ -91,7 +91,7 @@ const BuilderCanvas = ({ activeTool, setActiveTool, getCanvasCoords }: BuilderCa
           const targetId = target.getAttribute('data-port-id');
           const targetPort = target.getAttribute('data-port-position');
           
-          if (targetId && targetId !== wiringState.sourceId) {
+          if (targetId && targetId !== wiringState.sourceId && wiringState.sourcePort && targetPort) {
             connectBlocks(wiringState.sourceId, targetId, wiringState.sourcePort, targetPort);
           }
         }
@@ -341,6 +341,8 @@ const BuilderCanvas = ({ activeTool, setActiveTool, getCanvasCoords }: BuilderCa
             <div className="w-full h-1.5 rounded-t-xl absolute top-0 left-0" style={{ background: `linear-gradient(to right, ${noteColor}, ${noteColor}80)` }} />
             
             <button
+              aria-label="Delete Sticky Note"
+              title="Delete Sticky Note"
               onClick={(e) => {
                 e.stopPropagation();
                 deleteStickyNote(note.id);
@@ -372,6 +374,7 @@ const BuilderCanvas = ({ activeTool, setActiveTool, getCanvasCoords }: BuilderCa
 
       {/* Builder Text Labels */}
       {textLabels.map((label: any) => (
+        // eslint-disable-next-line
         <div
           key={`builder-label-${label.id}`}
           className="absolute z-20 pointer-events-auto group"
@@ -385,6 +388,8 @@ const BuilderCanvas = ({ activeTool, setActiveTool, getCanvasCoords }: BuilderCa
             onChange={(e) => updateTextLabel(label.id, e.target.value)}
           />
           <button
+            aria-label="Delete Label"
+            title="Delete Label"
             onClick={() => deleteTextLabel(label.id)}
             className="absolute -top-2 -right-2 w-5 h-5 rounded-md bg-[#ff4b4b]/20 hover:bg-[#ff4b4b]/80 border border-[#ff4b4b]/50 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all shadow-lg"
           >
