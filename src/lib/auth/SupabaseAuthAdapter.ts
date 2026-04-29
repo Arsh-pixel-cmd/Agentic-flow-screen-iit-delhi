@@ -5,7 +5,7 @@ import { supabase } from '../supabaseClient';
  * Normalizes a Supabase user object into the standard AuthUser shape.
  * This is the SINGLE place where Supabase-specific field names get mapped.
  */
-function normalizeUser(supabaseUser) {
+function normalizeUser(supabaseUser: any) {
   if (!supabaseUser) return null;
   return {
     id: supabaseUser.id,
@@ -20,14 +20,14 @@ function normalizeUser(supabaseUser) {
 /**
  * Normalizes a Supabase error into a plain string.
  */
-function normalizeError(error) {
+function normalizeError(error: any) {
   if (!error) return null;
   return error.message || String(error);
 }
 
 export class SupabaseAuthAdapter extends AuthAdapter {
 
-  async signUp({ email, password, name, company }) {
+  async signUp({ email, password, name, company }: any) {
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
@@ -45,7 +45,7 @@ export class SupabaseAuthAdapter extends AuthAdapter {
     };
   }
 
-  async signIn({ email, password }) {
+  async signIn({ email, password }: any) {
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
@@ -57,7 +57,7 @@ export class SupabaseAuthAdapter extends AuthAdapter {
     };
   }
 
-  async signInWithProvider(provider) {
+  async signInWithProvider(provider: any) {
     const { error } = await supabase.auth.signInWithOAuth({
       provider,
       options: {
@@ -79,7 +79,7 @@ export class SupabaseAuthAdapter extends AuthAdapter {
     }
     return {
       session: {
-        user: normalizeUser(session.user),
+        user: normalizeUser(session.user) as any,
         accessToken: session.access_token,
       },
       error: null,
@@ -91,7 +91,7 @@ export class SupabaseAuthAdapter extends AuthAdapter {
     return session?.access_token || null;
   }
 
-  async getProfile(userId) {
+  async getProfile(userId: any) {
     const { data, error } = await supabase
       .from('profiles')
       .select('*')
@@ -115,7 +115,7 @@ export class SupabaseAuthAdapter extends AuthAdapter {
     };
   }
 
-  async updateProfile(userId, profileData) {
+  async updateProfile(userId: any, profileData: any) {
     const { error } = await supabase
       .from('profiles')
       .upsert({ id: userId, ...profileData, updated_at: new Date().toISOString() });
@@ -123,9 +123,9 @@ export class SupabaseAuthAdapter extends AuthAdapter {
     return { error: normalizeError(error) };
   }
 
-  onAuthStateChange(callback) {
+  onAuthStateChange(callback: any) {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
+      (event: any, session: any) => {
         callback(event, session ? {
           user: normalizeUser(session.user),
           accessToken: session.access_token,

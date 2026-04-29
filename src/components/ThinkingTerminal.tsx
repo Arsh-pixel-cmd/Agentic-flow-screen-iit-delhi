@@ -3,14 +3,14 @@ import { createPortal } from 'react-dom';
 // eslint-disable-next-line no-unused-vars
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Maximize2 } from 'lucide-react';
-import { getSavedKeys } from '../lib/llm';
+import { supabase } from '../lib/supabaseClient';
 import { useWorkflowStore } from '../lib/store';
 
-const ThinkingTerminal = ({ node, isRunning }) => {
+const ThinkingTerminal = ({ node, isRunning }: any) => {
   const [text, setText] = useState('');
   const [active, setActive] = useState(false);
   const [expanded, setExpanded] = useState(false);
-  const projectPrompt = useWorkflowStore(state => state.projectPrompt);
+  const projectPrompt = useWorkflowStore((state: any) => state.projectPrompt);
   const textRef = useRef('');
   const expandedRef = useRef(false);
 
@@ -46,11 +46,11 @@ const ThinkingTerminal = ({ node, isRunning }) => {
     }, 0);
 
     const startStream = async () => {
-      const keys = getSavedKeys();
-      const activeKey = keys.openrouterKey || keys.groqKey;
+      const { data: { session } } = await supabase.auth.getSession();
+      const userId = session?.user?.id;
       
-      if (!activeKey) {
-         setText(prev => prev + '\n> Missing active API key. Stream aborted.');
+      if (!userId) {
+         setText(prev => prev + '\n> Not authenticated. Stream aborted.');
          return;
       }
 
@@ -61,7 +61,7 @@ const ThinkingTerminal = ({ node, isRunning }) => {
           body: JSON.stringify({
             userTask: projectPrompt,
             agent: { name: node.category?.name || 'Agent' },
-            activeKey
+            userId
           })
         });
 
@@ -129,7 +129,7 @@ const ThinkingTerminal = ({ node, isRunning }) => {
                    <span className="text-[9px] uppercase tracking-[0.2em] text-[#A259FF] ml-auto font-bold opacity-80 flex items-center gap-2">
                       COM-LINK // {isRunning ? 'RUNNING' : 'TERMINATED'}
                    </span>
-                   <button className="ml-2 opacity-0 group-hover:opacity-100 transition-opacity text-white/50 hover:text-white">
+                   <button title="Expand Terminal" className="ml-2 opacity-0 group-hover:opacity-100 transition-opacity text-white/50 hover:text-white">
                      <Maximize2 size={12} />
                    </button>
                 </div>
@@ -170,6 +170,7 @@ const ThinkingTerminal = ({ node, isRunning }) => {
                      {isRunning ? 'RUNNING' : 'TERMINATED'}
                   </span>
                   <button 
+                    title="Close Terminal"
                     onClick={(e) => { 
                       e.stopPropagation(); 
                       setExpanded(false); 

@@ -3,10 +3,15 @@ import { X, Download, Copy, FileText, CheckCircle2 } from 'lucide-react';
 import { useWorkflowStore } from '../lib/store';
 import { WORKFLOW_PHASES } from '../data/schema';
 
-const OutputScreen = ({ isOpen, onClose }) => {
+interface OutputScreenProps {
+  isOpen: boolean;
+  onClose: () => void;
+}
+
+const OutputScreen = ({ isOpen, onClose }: OutputScreenProps) => {
   const contentRef = useRef(null);
-  const nodeResults = useWorkflowStore(state => state.nodeResults);
-  const projectPrompt = useWorkflowStore(state => state.projectPrompt);
+  const nodeResults = useWorkflowStore((state: any) => state.nodeResults);
+  const projectPrompt = useWorkflowStore((state: any) => state.projectPrompt);
   const [copied, setCopied] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
 
@@ -62,6 +67,11 @@ const OutputScreen = ({ isOpen, onClose }) => {
           </body>
         </html>
       `;
+      if (!printWindow) {
+        alert("Please allow popups to generate the PDF.");
+        setIsDownloading(false);
+        return;
+      }
       
       printWindow.document.write(htmlContent);
       printWindow.document.close();
@@ -142,6 +152,7 @@ const OutputScreen = ({ isOpen, onClose }) => {
             </button>
             <button
               onClick={onClose}
+              title="Close Output Screen"
               className="p-2.5 rounded-xl hover:bg-white/5 transition-all text-slate-500 hover:text-white"
             >
               <X size={18} />
@@ -174,7 +185,7 @@ const OutputScreen = ({ isOpen, onClose }) => {
                 develop: '#A259FF',
                 deliver: '#DEF767',
               };
-              const accent = PHASE_ACCENT[phase.id] || '#A259FF';
+              const accent = PHASE_ACCENT[phase.id as keyof typeof PHASE_ACCENT] || '#A259FF';
 
               return (
                 <div key={phase.id} className="space-y-6">

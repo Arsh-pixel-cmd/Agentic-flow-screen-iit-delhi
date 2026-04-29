@@ -14,7 +14,7 @@ const TemplatesView = () => {
     setNewTemplateName('');
   };
 
-  const startEditing = (template) => {
+  const startEditing = (template: any) => {
     setEditingId(template.id);
     setEditName(template.name);
   };
@@ -97,9 +97,11 @@ const TemplatesView = () => {
                           onChange={(e) => setEditName(e.target.value)}
                           className="flex-1 bg-black/60 border border-[#A259FF]/40 rounded-xl px-3 py-1.5 text-sm text-white outline-none"
                           autoFocus
+                          title="Template Name"
+                          placeholder="Template Name"
                           onKeyDown={(e) => { if (e.key === 'Enter') confirmEdit(); if (e.key === 'Escape') cancelEdit(); }}
                         />
-                        <button onClick={confirmEdit} className="p-2 rounded-lg bg-[#A259FF]/20 text-[#A259FF] hover:bg-[#A259FF]">
+                        <button onClick={confirmEdit} title="Confirm Edit" className="p-2 rounded-lg bg-[#A259FF]/20 text-[#A259FF] hover:bg-[#A259FF]">
                           <Check size={14} />
                         </button>
                       </div>

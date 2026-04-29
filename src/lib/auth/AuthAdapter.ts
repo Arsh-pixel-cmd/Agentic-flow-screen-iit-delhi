@@ -4,28 +4,44 @@
  * 
  * Every adapter (Supabase, Local Server, etc.) MUST implement
  * these methods and return data in the exact shapes defined below.
- * 
- * ─── Normalized User Shape ───
- * @typedef {Object} AuthUser
- * @property {string} id
- * @property {string} email
- * @property {string} name
- * @property {string|null} company
- * @property {string|null} avatarUrl
- * @property {string|null} createdAt
- * 
- * ─── Normalized Session Shape ───
- * @typedef {Object} AuthSession
- * @property {AuthUser} user
- * @property {string} accessToken
- * 
- * ─── Standard Return Shapes ───
- * @typedef {{ user: AuthUser|null, error: string|null }} AuthResult
- * @typedef {{ session: AuthSession|null, error: string|null }} SessionResult
- * @typedef {{ profile: Object|null, error: string|null }} ProfileResult
- * @typedef {{ error: string|null }} VoidResult
- * @typedef {{ unsubscribe: Function }} Subscription
  */
+
+export interface AuthUser {
+  id: string;
+  email: string;
+  name: string;
+  company: string | null;
+  avatarUrl: string | null;
+  createdAt: string | null;
+}
+
+export interface AuthSession {
+  user: AuthUser;
+  accessToken: string;
+}
+
+export interface AuthResult {
+  user: AuthUser | null;
+  error: string | null;
+}
+
+export interface SessionResult {
+  session: AuthSession | null;
+  error: string | null;
+}
+
+export interface ProfileResult {
+  profile: any | null;
+  error: string | null;
+}
+
+export interface VoidResult {
+  error: string | null;
+}
+
+export interface Subscription {
+  unsubscribe: () => void;
+}
 
 export class AuthAdapter {
   /**
@@ -33,7 +49,7 @@ export class AuthAdapter {
    * @param {{ email: string, password: string, name: string, company?: string }} _data
    * @returns {Promise<AuthResult>}
    */
-  async signUp(_data) {
+  async signUp(_data: any): Promise<AuthResult> {
     throw new Error('AuthAdapter.signUp() not implemented');
   }
 
@@ -42,7 +58,7 @@ export class AuthAdapter {
    * @param {{ email: string, password: string }} _credentials
    * @returns {Promise<AuthResult>}
    */
-  async signIn(_credentials) {
+  async signIn(_credentials: any): Promise<AuthResult> {
     throw new Error('AuthAdapter.signIn() not implemented');
   }
 
@@ -51,7 +67,7 @@ export class AuthAdapter {
    * @param {string} _provider
    * @returns {Promise<VoidResult>} (Usually triggers a redirect)
    */
-  async signInWithProvider(_provider) {
+  async signInWithProvider(_provider: any): Promise<VoidResult> {
     throw new Error('AuthAdapter.signInWithProvider() not implemented');
   }
 
@@ -59,7 +75,7 @@ export class AuthAdapter {
    * Sign out the current user.
    * @returns {Promise<VoidResult>}
    */
-  async signOut() {
+  async signOut(): Promise<VoidResult> {
     throw new Error('AuthAdapter.signOut() not implemented');
   }
 
@@ -67,7 +83,7 @@ export class AuthAdapter {
    * Get the current active session (if any).
    * @returns {Promise<SessionResult>}
    */
-  async getSession() {
+  async getSession(): Promise<SessionResult> {
     throw new Error('AuthAdapter.getSession() not implemented');
   }
 
@@ -75,7 +91,7 @@ export class AuthAdapter {
    * Get the current access token for API calls.
    * @returns {Promise<string|null>}
    */
-  async getAccessToken() {
+  async getAccessToken(): Promise<string | null> {
     throw new Error('AuthAdapter.getAccessToken() not implemented');
   }
 
@@ -84,7 +100,7 @@ export class AuthAdapter {
    * @param {string} _userId
    * @returns {Promise<ProfileResult>}
    */
-  async getProfile(_userId) {
+  async getProfile(_userId: any): Promise<ProfileResult> {
     throw new Error('AuthAdapter.getProfile() not implemented');
   }
 
@@ -94,7 +110,7 @@ export class AuthAdapter {
    * @param {Object} _data
    * @returns {Promise<VoidResult>}
    */
-  async updateProfile(_userId, _data) {
+  async updateProfile(_userId: any, _data: any): Promise<VoidResult> {
     throw new Error('AuthAdapter.updateProfile() not implemented');
   }
 
@@ -104,7 +120,7 @@ export class AuthAdapter {
    * @param {Function} _callback
    * @returns {Subscription}
    */
-  onAuthStateChange(_callback) {
+  onAuthStateChange(_callback: any): Subscription {
     throw new Error('AuthAdapter.onAuthStateChange() not implemented');
   }
 }

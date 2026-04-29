@@ -12,6 +12,11 @@ import { AuthAdapter } from './AuthAdapter';
  */
 
 export class LocalServerAuthAdapter extends AuthAdapter {
+  baseUrl: string;
+  TOKEN_KEY: string;
+  USER_KEY: string;
+  _listeners: Set<any>;
+
   constructor(baseUrl = 'http://localhost:3001') {
     super();
     this.baseUrl = baseUrl;
@@ -23,7 +28,7 @@ export class LocalServerAuthAdapter extends AuthAdapter {
   /**
    * Helper: make authenticated requests to your local API.
    */
-  async _fetch(endpoint, options = {}) {
+  async _fetch(endpoint: string, options: any = {}) {
     const token = localStorage.getItem(this.TOKEN_KEY);
     const res = await fetch(`${this.baseUrl}${endpoint}`, {
       ...options,
@@ -44,7 +49,7 @@ export class LocalServerAuthAdapter extends AuthAdapter {
   /**
    * Helper: persist auth state and notify listeners.
    */
-  _setAuth(user, token) {
+  _setAuth(user: any, token: any) {
     if (user && token) {
       localStorage.setItem(this.TOKEN_KEY, token);
       localStorage.setItem(this.USER_KEY, JSON.stringify(user));
@@ -56,7 +61,7 @@ export class LocalServerAuthAdapter extends AuthAdapter {
     this._listeners.forEach(cb => cb(user ? 'SIGNED_IN' : 'SIGNED_OUT', session));
   }
 
-  async signUp({ email, password, name, company }) {
+  async signUp({ email, password, name, company }: any) {
     const { data, error } = await this._fetch('/auth/register', {
       method: 'POST',
       body: JSON.stringify({ email, password, name, company }),
@@ -77,7 +82,7 @@ export class LocalServerAuthAdapter extends AuthAdapter {
     return { user, error: null };
   }
 
-  async signIn({ email, password }) {
+  async signIn({ email, password }: any) {
     const { data, error } = await this._fetch('/auth/login', {
       method: 'POST',
       body: JSON.stringify({ email, password }),
@@ -98,7 +103,7 @@ export class LocalServerAuthAdapter extends AuthAdapter {
     return { user, error: null };
   }
 
-  async signInWithProvider(provider) {
+  async signInWithProvider(provider: any) {
     // For local server, this typically redirects to a passport.js /auth/google endpoint
     window.location.href = `${this.baseUrl}/auth/${provider}`;
     return { error: null }; // Redirects
@@ -137,7 +142,7 @@ export class LocalServerAuthAdapter extends AuthAdapter {
     return localStorage.getItem(this.TOKEN_KEY) || null;
   }
 
-  async getProfile(userId) {
+  async getProfile(userId: any) {
     const { data, error } = await this._fetch(`/auth/profile/${userId}`);
     if (error) return { profile: null, error };
 
@@ -154,7 +159,7 @@ export class LocalServerAuthAdapter extends AuthAdapter {
     };
   }
 
-  async updateProfile(userId, profileData) {
+  async updateProfile(userId: any, profileData: any) {
     const { error } = await this._fetch(`/auth/profile/${userId}`, {
       method: 'PUT',
       body: JSON.stringify(profileData),
@@ -162,7 +167,7 @@ export class LocalServerAuthAdapter extends AuthAdapter {
     return { error };
   }
 
-  onAuthStateChange(callback) {
+  onAuthStateChange(callback: any) {
     this._listeners.add(callback);
     return {
       unsubscribe: () => this._listeners.delete(callback),

@@ -41,7 +41,7 @@ export interface BuilderStore {
 
 export const useBuilderStore = create<BuilderStore>((set, get) => ({
   viewMode: 'pipeline', // 'pipeline' | 'builder' | 'templates'
-  setViewMode: (mode) => set({ viewMode: mode, selectedElementId: null }),
+  setViewMode: (mode: any) => set({ viewMode: mode, selectedElementId: null }),
 
   blocks: [],
   connections: [],
@@ -52,30 +52,30 @@ export const useBuilderStore = create<BuilderStore>((set, get) => ({
   nodeStatus: {}, // id -> 'idle'|'running'|'success'|'error'
   nodeResults: {}, // id -> output
 
-  setNodeStatus: (id, status) => set(state => ({ nodeStatus: { ...state.nodeStatus, [id]: status } })),
-  setNodeResult: (id, result) => set(state => ({ nodeResults: { ...state.nodeResults, [id]: result } })),
+  setNodeStatus: (id: any, status: any) => set(state => ({ nodeStatus: { ...state.nodeStatus, [id]: status } })),
+  setNodeResult: (id: any, result: any) => set(state => ({ nodeResults: { ...state.nodeResults, [id]: result } })),
   resetExecution: () => set(state => {
-    const emptyStatus = {};
+    const emptyStatus: Record<string, string> = {};
     state.blocks.forEach(b => { emptyStatus[b.id] = 'idle'; });
     return { nodeStatus: emptyStatus, nodeResults: {} };
   }),
 
   selectedElementId: null,
-  setSelectedElementId: (id) => set({ selectedElementId: id }),
+  setSelectedElementId: (id: any) => set({ selectedElementId: id }),
 
   // --- TEXT LABELS ---
-  addTextLabel: (position) => set((state) => ({
+  addTextLabel: (position: any) => set((state) => ({
     textLabels: [...state.textLabels, { id: generateId(), text: '', x: position.x, y: position.y }]
   })),
-  updateTextLabel: (id, text) => set((state) => ({
+  updateTextLabel: (id: any, text: any) => set((state) => ({
     textLabels: state.textLabels.map(l => l.id === id ? { ...l, text } : l)
   })),
-  deleteTextLabel: (id) => set((state) => ({
+  deleteTextLabel: (id: any) => set((state) => ({
     textLabels: state.textLabels.filter(l => l.id !== id)
   })),
 
   // --- BLOCKS ---
-  addBlock: (position) => {
+  addBlock: (position: any) => {
     const newBlock = {
       id: generateId(),
       name: 'New Agent',
@@ -95,18 +95,18 @@ export const useBuilderStore = create<BuilderStore>((set, get) => ({
     }));
   },
   
-  updateBlock: (id, updates) => set((state) => ({
+  updateBlock: (id: any, updates: any) => set((state) => ({
     blocks: state.blocks.map(b => b.id === id ? { ...b, ...updates } : b)
   })),
 
-  deleteBlock: (id) => set((state) => ({
+  deleteBlock: (id: any) => set((state) => ({
     blocks: state.blocks.filter(b => b.id !== id),
     connections: state.connections.filter(c => c.sourceBlockId !== id && c.targetBlockId !== id),
     selectedElementId: state.selectedElementId === id ? null : state.selectedElementId
   })),
 
   // --- CONNECTIONS ---
-  connectBlocks: (sourceId, targetId, sourcePort, targetPort) => set((state) => {
+  connectBlocks: (sourceId: any, targetId: any, sourcePort: any, targetPort: any) => set((state) => {
     // Prevent duplicate or self connections
     if (sourceId === targetId) return state;
     if (state.connections.find(c => c.sourceBlockId === sourceId && c.targetBlockId === targetId && c.sourcePort === sourcePort && c.targetPort === targetPort)) {
@@ -117,13 +117,13 @@ export const useBuilderStore = create<BuilderStore>((set, get) => ({
     };
   }),
 
-  deleteConnection: (id) => set((state) => ({
+  deleteConnection: (id: any) => set((state) => ({
     connections: state.connections.filter(c => c.id !== id),
     selectedElementId: state.selectedElementId === id ? null : state.selectedElementId
   })),
 
   // --- STICKY NOTES ---
-  addStickyNote: (position) => {
+  addStickyNote: (position: any) => {
     const newNote = {
       id: generateId(),
       text: '',
@@ -139,11 +139,11 @@ export const useBuilderStore = create<BuilderStore>((set, get) => ({
     }));
   },
 
-  updateStickyNote: (id, updates) => set((state) => ({
+  updateStickyNote: (id: any, updates: any) => set((state) => ({
     stickyNotes: state.stickyNotes.map(n => n.id === id ? { ...n, ...updates } : n)
   })),
 
-  deleteStickyNote: (id) => set((state) => ({
+  deleteStickyNote: (id: any) => set((state) => ({
     stickyNotes: state.stickyNotes.filter(n => n.id !== id),
     selectedElementId: state.selectedElementId === `sticky-${id}` ? null : state.selectedElementId
   })),
@@ -153,9 +153,9 @@ export const useBuilderStore = create<BuilderStore>((set, get) => ({
   // --- TEMPLATES & PIPELINE DEPLOYMENT ---
   deployedTemplateId: null,
 
-  setTemplates: (templates) => set({ templates }),
+  setTemplates: (templates: any) => set({ templates }),
 
-  deployProject: async (name) => {
+  deployProject: async (name: any) => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) return alert("Must be logged in to deploy!");
 
@@ -188,7 +188,7 @@ export const useBuilderStore = create<BuilderStore>((set, get) => ({
       }
   },
 
-  saveAsTemplate: async (name) => {
+  saveAsTemplate: async (name: any) => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) return;
       const state = get();
@@ -208,20 +208,20 @@ export const useBuilderStore = create<BuilderStore>((set, get) => ({
       }
   },
 
-  applyTemplate: (templateId) => set((state) => {
+  applyTemplate: (templateId: any) => set((state) => {
     const template = state.templates.find(t => t.id === templateId);
     if (!template) return state;
     
     // We should regenerate IDs so we don't conflict. 
     // For simplicity, we just clone blocks with new IDs and update connections
-    const idMap = {};
-    const newBlocks = template.blocks.map(b => {
+    const idMap: Record<string, string> = {};
+    const newBlocks = template.blocks.map((b: any) => {
       const newId = generateId();
       idMap[b.id] = newId;
       return { ...b, id: newId };
     });
     
-    const newConns = template.connections.map(c => ({
+    const newConns = template.connections.map((c: any) => ({
       id: generateId(),
       sourceBlockId: idMap[c.sourceBlockId] || c.sourceBlockId, 
       targetBlockId: idMap[c.targetBlockId] || c.targetBlockId
@@ -236,14 +236,14 @@ export const useBuilderStore = create<BuilderStore>((set, get) => ({
     };
   }),
   
-  updateTemplate: async (id, updates) => {
+  updateTemplate: async (id: any, updates: any) => {
     set((state) => ({
       templates: state.templates.map(t => t.id === id ? { ...t, ...updates } : t)
     }));
     await supabase.from('templates').update(updates).eq('id', id);
   },
 
-  deleteTemplate: async (id) => {
+  deleteTemplate: async (id: any) => {
     set((state) => ({
       templates: state.templates.filter(t => t.id !== id)
     }));

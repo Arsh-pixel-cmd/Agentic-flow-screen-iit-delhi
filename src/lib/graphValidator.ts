@@ -1,7 +1,7 @@
 import { UX_CATEGORIES, WORKFLOW_PHASES, EDGES, TOOL_REGISTRY, createNodeId } from '../data/schema';
 
 class GraphValidationError extends Error {
-  constructor(message) {
+  constructor(message: string) {
     super(message);
     this.name = 'GraphValidationError';
   }
@@ -9,12 +9,12 @@ class GraphValidationError extends Error {
 
 export const validateGraph = () => {
   const nodeIds = new Set();
-  const graph = {};
+  const graph: Record<string, any[]> = {};
 
   // 1. Validate Phases & Categories (Check for existence and ID construction)
-  WORKFLOW_PHASES.forEach((phase) => {
-    phase.categories.forEach((catId) => {
-      if (!UX_CATEGORIES[catId]) {
+  WORKFLOW_PHASES.forEach((phase: any) => {
+    phase.categories.forEach((catId: any) => {
+      if (!(UX_CATEGORIES as any)[catId]) {
         throw new GraphValidationError(`Phase ${phase.id} references undefined category ${catId}`);
       }
       const nodeId = createNodeId(phase.id, catId);
@@ -25,8 +25,8 @@ export const validateGraph = () => {
       graph[nodeId] = []; // Initialize adjacency list
 
       // Validate tools exist
-      UX_CATEGORIES[catId].tools.forEach((toolId) => {
-        if (!TOOL_REGISTRY[toolId]) {
+      (UX_CATEGORIES as any)[catId].tools.forEach((toolId: any) => {
+        if (!(TOOL_REGISTRY as any)[toolId]) {
           throw new GraphValidationError(`Category ${catId} references undefined tool: ${toolId}`);
         }
       });
@@ -34,7 +34,7 @@ export const validateGraph = () => {
   });
 
   // 2. Validate Edges (Check for orphaned or invalid references)
-  EDGES.forEach((edge) => {
+  EDGES.forEach((edge: any) => {
     if (!nodeIds.has(edge.from)) {
       throw new GraphValidationError(`Edge originates from unknown node: ${edge.from}`);
     }
@@ -43,19 +43,19 @@ export const validateGraph = () => {
     }
     
     // Add to adjacency list for DAG cycle check
-    graph[edge.from].push(edge.to);
+    graph[edge.from]!.push(edge.to);
   });
 
   // 3. Cycle Detection (Enforce DAG)
   const visited = new Set();
   const recStack = new Set();
 
-  const isCyclic = (node) => {
+  const isCyclic = (node: any) => {
     if (!visited.has(node)) {
       visited.add(node);
       recStack.add(node);
 
-      for (const neighbor of graph[node]) {
+      for (const neighbor of graph[node]!) {
         if (!visited.has(neighbor) && isCyclic(neighbor)) {
           return true;
         } else if (recStack.has(neighbor)) {

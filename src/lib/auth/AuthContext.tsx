@@ -18,7 +18,7 @@ export interface AuthContextType {
 const AuthContext = createContext<AuthContextType | null>(null);
 
 // ─── Provider ───────────────────────────────────────────────
-export const AuthProvider = ({ children, adapter }) => {
+export const AuthProvider = ({ children, adapter }: any) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true); // true by default to prevent flash
 
@@ -42,7 +42,7 @@ export const AuthProvider = ({ children, adapter }) => {
     bootstrap();
 
     // Listen for auth state changes (login/logout in other tabs, token refresh)
-    const { unsubscribe } = adapter.onAuthStateChange((_event, session) => {
+    const { unsubscribe } = adapter.onAuthStateChange((_event: any, session: any) => {
       setUser(session?.user || null);
       setLoading(false);
     });
@@ -55,7 +55,7 @@ export const AuthProvider = ({ children, adapter }) => {
 
   // ─── Auth Methods (pass-through to adapter, with state sync) ───
 
-  const signUp = useCallback(async (data) => {
+  const signUp = useCallback(async (data: any) => {
     const result = await adapter.signUp(data);
     if (result.user && !result.error) {
       setUser(result.user);
@@ -63,7 +63,7 @@ export const AuthProvider = ({ children, adapter }) => {
     return result;
   }, [adapter]);
 
-  const signIn = useCallback(async (credentials) => {
+  const signIn = useCallback(async (credentials: any) => {
     const result = await adapter.signIn(credentials);
     if (result.user && !result.error) {
       setUser(result.user);
@@ -71,7 +71,7 @@ export const AuthProvider = ({ children, adapter }) => {
     return result;
   }, [adapter]);
 
-  const signInWithProvider = useCallback(async (provider) => {
+  const signInWithProvider = useCallback(async (provider: any) => {
     return adapter.signInWithProvider(provider);
   }, [adapter]);
 
@@ -83,11 +83,11 @@ export const AuthProvider = ({ children, adapter }) => {
     return result;
   }, [adapter]);
 
-  const getProfile = useCallback(async (userId) => {
+  const getProfile = useCallback(async (userId: any) => {
     return adapter.getProfile(userId);
   }, [adapter]);
 
-  const updateProfile = useCallback(async (userId, data) => {
+  const updateProfile = useCallback(async (userId: any, data: any) => {
     return adapter.updateProfile(userId, data);
   }, [adapter]);
 
@@ -126,7 +126,7 @@ export const useAuth = () => {
 };
 
 // ─── Protected Route ────────────────────────────────────────
-export const ProtectedRoute = ({ children }) => {
+export const ProtectedRoute = ({ children }: any) => {
   const { user, loading } = useAuth();
 
   if (loading) {

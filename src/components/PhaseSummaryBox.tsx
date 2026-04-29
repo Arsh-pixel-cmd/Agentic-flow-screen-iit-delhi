@@ -4,9 +4,9 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { createPortal } from 'react-dom';
 import { useWorkflowStore } from '../lib/store';
 
-function useOutsideClick(ref, handler) {
+function useOutsideClick(ref: any, handler: any) {
   useEffect(() => {
-    const listener = (event) => {
+    const listener = (event: any) => {
       // Don't trigger if click is inside the modal or the toggle button
       if (!ref.current || ref.current.contains(event.target)) {
         return;
@@ -22,19 +22,20 @@ function useOutsideClick(ref, handler) {
   }, [ref, handler]);
 }
 
-const PhaseSummaryBox = ({ phase, x, y }) => {
+const PhaseSummaryBox = ({ phase, x, y }: any) => {
   const [isOpen, setIsOpen] = useState(false);
   const modalRef = useRef(null);
   
   useOutsideClick(modalRef, () => setIsOpen(false));
-  const nodeResults = useWorkflowStore(state => state.nodeResults);
+  const nodeResults = useWorkflowStore((state: any) => state.nodeResults);
   
   // Aggregate output
   const phaseResults = Object.entries(nodeResults)
     .filter(([id]) => id.startsWith(phase.id + '::'))
-    .map(([id, result]) => ({ id, ...result }));
+    .map(([id, result]) => ({ id, ...(result as any) }));
 
   return (
+    // eslint-disable-next-line
     <div className="absolute z-50 flex flex-col items-center" style={{ left: x, top: y, transform: 'translate(-50%, 0)' }}>
       {/* Default State - Pulse Anchor */}
       <motion.button

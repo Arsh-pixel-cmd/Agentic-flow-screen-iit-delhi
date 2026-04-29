@@ -1,10 +1,10 @@
 import { create } from 'zustand';
 import { WORKFLOW_PHASES } from '../data/schema';
 
-export const useWorkflowStore = create((set, get) => ({
+export const useWorkflowStore = create<any>((set, get) => ({
   // Core Graph State
   graphStatus: 'idle', // idle, loading, ready, error
-  setGraphStatus: (status) => set({ graphStatus: status }),
+  setGraphStatus: (status: any) => set({ graphStatus: status }),
 
   // Animation State Machine
   animationState: {
@@ -12,39 +12,39 @@ export const useWorkflowStore = create((set, get) => ({
     activeNodes: [],
     queuedTransitions: []
   },
-  setAnimationState: (newState) => set((state) => ({ 
+  setAnimationState: (newState: any) => set((state: any) => ({ 
     animationState: { ...state.animationState, ...newState } 
   })),
   // Master Project Input
   projectPrompt: '',
-  setProjectPrompt: (prompt) => set({ projectPrompt: prompt }),
+  setProjectPrompt: (prompt: any) => set({ projectPrompt: prompt }),
   projectAttachment: null, // { name, content, type }
-  setProjectAttachment: (attachment) => set({ projectAttachment: attachment }),
+  setProjectAttachment: (attachment: any) => set({ projectAttachment: attachment }),
 
   // Execution State
   currentPhaseIndex: 0,
-  setCurrentPhaseIndex: (idx) => set({ currentPhaseIndex: idx }),
+  setCurrentPhaseIndex: (idx: any) => set({ currentPhaseIndex: idx }),
   nodeStates: {}, // Record<nodeId, 'idle' | 'running' | 'completed'>
   nodeResults: {}, // Record<nodeId, { content, ui }>
-  setNodeState: (nodeId, state) => set((s) => ({
+  setNodeState: (nodeId: any, state: any) => set((s: any) => ({
     nodeStates: { ...s.nodeStates, [nodeId]: state }
   })),
-  setNodeResult: (nodeId, result) => set((s) => ({
+  setNodeResult: (nodeId: any, result: any) => set((s: any) => ({
     nodeResults: { ...s.nodeResults, [nodeId]: result }
   })),
-  resetExecution: (nodes) => {
-    const freshStates = {};
-    nodes.forEach(n => { freshStates[n] = 'idle'; });
+  resetExecution: (nodes: any) => {
+    const freshStates: Record<string, any> = {};
+    nodes.forEach((n: any) => { freshStates[n] = 'idle'; });
     set({ nodeStates: freshStates, nodeResults: {}, currentPhaseIndex: 0, revealedPhases: [], graphStatus: 'ready', flowStatus: 'idle', animationState: { phase: 'idle', activeNodes: [], queuedTransitions: [] } });
   },
 
   // Layout Constraints
   layoutMode: 'desktop', // desktop | tablet | mobile
-  setLayoutMode: (mode) => set({ layoutMode: mode }),
+  setLayoutMode: (mode: any) => set({ layoutMode: mode }),
 
   // Explorer vs Advisor modes
   activeMode: 'explorer',
-  setActiveMode: (mode) => set({ activeMode: mode }),
+  setActiveMode: (mode: any) => set({ activeMode: mode }),
 
   // Interaction & Selection
   selectedNodeId: null,
@@ -63,18 +63,18 @@ export const useWorkflowStore = create((set, get) => ({
 
   // State Updates with built-in Priority Resolution Logic
   // eslint-disable-next-line no-unused-vars
-  selectNode: (nodeId, _source = 'manualSelection') => {
+  selectNode: (nodeId: any, _source: any = 'manualSelection') => {
     // Determine priority resolution if needed here
     // Manual selection overrides Advisor automated selections
     set({ selectedNodeId: nodeId, selectedToolId: null });
   },
 
-  selectTool: (toolId) => {
+  selectTool: (toolId: any) => {
     set({ selectedToolId: toolId });
   },
 
   // Progressive unrolling array (just simple phase tracking for animation)
-  revealedPhases: [WORKFLOW_PHASES[0].id],
+  revealedPhases: [WORKFLOW_PHASES[0]!.id],
   revealNextPhase: () => {
     const current = get().revealedPhases;
     const all = WORKFLOW_PHASES.map(p => p.id);
@@ -85,7 +85,7 @@ export const useWorkflowStore = create((set, get) => ({
 }));
 
 // Selectors for specific Memoized updates in React
-export const selectActiveNodeId = (state) => state.selectedNodeId;
-export const selectActiveToolId = (state) => state.selectedToolId;
-export const selectRevealedPhases = (state) => state.revealedPhases;
-export const selectLayoutMode = (state) => state.layoutMode;
+export const selectActiveNodeId = (state: any) => state.selectedNodeId;
+export const selectActiveToolId = (state: any) => state.selectedToolId;
+export const selectRevealedPhases = (state: any) => state.revealedPhases;
+export const selectLayoutMode = (state: any) => state.layoutMode;

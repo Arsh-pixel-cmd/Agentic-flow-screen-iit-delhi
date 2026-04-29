@@ -28,24 +28,24 @@ const DIAMOND_COORDS = {
 };
 
 // eslint-disable-next-line no-unused-vars
-export const computeLayout = (_mode = 'desktop', _containerWidth, containerHeight) => {
-  const nodeRegistry = {};
+export const computeLayout = (_mode: any = 'desktop', _containerWidth: any, containerHeight: any) => {
+  const nodeRegistry: Record<string, any> = {};
   
   const h = containerHeight || 800;
   const centerY = h / 2;
 
   // Render exactly the hardcoded visual diamond.
-  Object.keys(DIAMOND_COORDS).forEach((nodeId) => {
+  (Object.keys(DIAMOND_COORDS) as Array<keyof typeof DIAMOND_COORDS>).forEach((nodeId) => {
     const coords = DIAMOND_COORDS[nodeId];
-    const catId = nodeId.split('::')[1];
-    const phaseId = nodeId.split('::')[0];
+    const catId = nodeId.split('::')[1] || '';
+    const phaseId = nodeId.split('::')[0] || '';
 
     nodeRegistry[nodeId] = {
       id: nodeId,
       x: coords.x + 300, // global X shift
       y: centerY + coords.y,
       phase: phaseId,
-      category: UX_CATEGORIES[catId],
+      category: (UX_CATEGORIES as any)[catId],
       colIndex: coords.colIndex
     };
   });

@@ -1,5 +1,4 @@
-// Helper to enforce canonical node IDs
-export const createNodeId = (phaseId, categoryId) => `${phaseId}::${categoryId}`;
+export const createNodeId = (phaseId: string, categoryId: string) => `${phaseId}::${categoryId}`;
 
 export const TOOL_REGISTRY = {
   // Phase 1: Discover

@@ -2,7 +2,7 @@
  * Computes a smooth Bezier curve between two coordinates.
  * Includes support for edge bundling offsets to avoid overlapping SVG wires.
  */
-export const computeEdgePath = (fromPos, toPos, routeConfig = { type: 'curve', offsetIndex: 0 }) => {
+export const computeEdgePath = (fromPos: any, toPos: any, routeConfig: any = { type: 'curve', offsetIndex: 0 }) => {
   const { x: x1, y: y1 } = fromPos;
   const { x: x2, y: y2 } = toPos;
 
@@ -30,10 +30,10 @@ export const computeEdgePath = (fromPos, toPos, routeConfig = { type: 'curve', o
 /**
  * Pre-processes schema EDGES to assign offsetIndexes to parallel/bundled wires.
  */
-export const bundleEdges = (edges) => {
-  const bundles = {};
+export const bundleEdges = (edges: any) => {
+  const bundles: Record<string, number> = {};
   
-  const processedEdges = edges.map((edge) => {
+  const processedEdges = edges.map((edge: any) => {
     // A bundle is defined by the Phase transition: e.g. "discover->define"
     const fromPhase = edge.from.split('::')[0];
     const toPhase = edge.to.split('::')[0];

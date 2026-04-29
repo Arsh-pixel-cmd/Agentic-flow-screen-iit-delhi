@@ -22,7 +22,7 @@ async function getCurrentUserId() {
 export async function getKeyStatus() {
   const userId = await getCurrentUserId();
   if (!userId) return { any: false, serverKey: false };
-  
+
   try {
     const res = await fetch(`http://localhost:3001/api/keys/status/${userId}`);
     const data = await res.json();
@@ -40,7 +40,7 @@ export async function getKeyStatus() {
  * @param {string} neuralContext - Previous phase data (Neural Bridge)
  * @returns {Promise<{content: string, ui: string}>}
  */
-export async function callLLM(userTask, agent, neuralContext = '', attachment = null) {
+export async function callLLM(userTask: any, agent: any, neuralContext: any = '', attachment: any = null) {
   const userId = await getCurrentUserId();
 
   // Build enriched task with attachment
@@ -91,7 +91,7 @@ export async function callLLM(userTask, agent, neuralContext = '', attachment = 
     }
 
     return await response.json();
-  } catch (err) {
+  } catch (err: any) {
     console.error('[Frontend] Failed to communicate with backend:', err);
     return {
       content: `Error reaching backend: ${err.message}`,
