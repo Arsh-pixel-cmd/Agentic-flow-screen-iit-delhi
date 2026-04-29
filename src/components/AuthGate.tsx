@@ -13,7 +13,7 @@ function getUserProfile() {
   }
 }
 
-function saveUserProfile(profile) {
+function saveUserProfile(profile: any) {
   localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
 }
 
@@ -21,7 +21,11 @@ function _clearUserProfile() {
   localStorage.removeItem(PROFILE_KEY);
 }
 
-const AuthGate = ({ children }) => {
+interface AuthGateProps {
+  children: React.ReactNode;
+}
+
+const AuthGate = ({ children }: AuthGateProps) => {
   const [profile, setProfile] = useState(() => getUserProfile());
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');

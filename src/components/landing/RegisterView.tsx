@@ -2,7 +2,11 @@ import React, { useState } from 'react';
 import { User, Mail, Building2, UserPlus, ChevronRight, Lock, Loader2, LogIn } from 'lucide-react';
 import { useAuth } from '../../lib/auth';
 
-export const RegisterView = ({ onRegister }) => {
+interface RegisterViewProps {
+  onRegister: (user: any) => void;
+}
+
+export const RegisterView = ({ onRegister }: RegisterViewProps) => {
   const [isLogin, setIsLogin] = useState(false);
   const [formData, setFormData] = useState({ name: '', email: '', password: '', company: '' });
   const [loading, setLoading] = useState(false);
@@ -16,13 +20,13 @@ export const RegisterView = ({ onRegister }) => {
       const { error } = await signInWithProvider('google');
       if (error) throw new Error(error);
       // Note: OAuth typically redirects, so execution might not reach here immediately.
-    } catch (err) {
+    } catch (err: any) {
       setErrorMsg(err.message);
       setLoading(false);
     }
   };
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setErrorMsg('');
@@ -49,7 +53,7 @@ export const RegisterView = ({ onRegister }) => {
           onRegister(user);
         }
       }
-    } catch (err) {
+    } catch (err: any) {
       setErrorMsg(err.message);
     } finally {
       setLoading(false);

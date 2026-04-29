@@ -1,8 +1,15 @@
 import React from 'react';
-import { Workflow, Layers, Terminal } from 'lucide-react';
+import { Workflow, Layers, Terminal, type LucideIcon } from 'lucide-react';
+
+interface FeatureCardProps {
+  icon: LucideIcon;
+  title: string;
+  description: string;
+  image?: string;
+}
 
 // eslint-disable-next-line no-unused-vars
-const FeatureCard = ({ icon: Icon, title, description, image }) => (
+const FeatureCard = ({ icon: Icon, title, description, image }: FeatureCardProps) => (
   <div className="bg-[#0A0A0A] border border-white/5 rounded-3xl hover:bg-zinc-900/50 hover:border-white/10 transition-all duration-500 group relative overflow-hidden flex flex-col">
     {image && (
       <div className="w-full h-48 overflow-hidden border-b border-white/5 relative">

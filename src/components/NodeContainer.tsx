@@ -18,7 +18,23 @@ const PHASE_COLORS = {
   'deliver': { accent: '#DEF767', bg: 'rgba(222,247,103,0.1)' },
 };
 
-const NodeContainer = ({ node, state, onClick, isVisible = true }) => {
+interface NodeData {
+  x: number;
+  y: number;
+  icon: string;
+  phase: string;
+  category: { name: string; description?: string; tools?: string[] };
+  [key: string]: any;
+}
+
+interface NodeContainerProps {
+  node: NodeData;
+  state: string;
+  onClick: () => void;
+  isVisible?: boolean;
+}
+
+const NodeContainer = ({ node, state, onClick, isVisible = true }: NodeContainerProps) => {
   const IconComponent = ICON_MAP[node.icon] || Box;
   const phaseColor = PHASE_COLORS[node.phase] || PHASE_COLORS['discover'];
 

@@ -2,7 +2,16 @@ import React from 'react';
 import { MousePointer2, StickyNote, Highlighter, LayoutTemplate, Eraser, Camera, Lock, Unlock, Type, PlusSquare, Network } from 'lucide-react';
 import { useBuilderStore } from '../lib/builderStore';
 
-const ToolDock = ({ activeTool, setActiveTool, canvasLocked, setCanvasLocked, onScreenshot, onEraseAll }) => {
+interface ToolDockProps {
+  activeTool: string;
+  setActiveTool: (tool: string) => void;
+  canvasLocked: boolean;
+  setCanvasLocked: (locked: boolean) => void;
+  onScreenshot: () => void;
+  onEraseAll: () => void;
+}
+
+const ToolDock = ({ activeTool, setActiveTool, canvasLocked, setCanvasLocked, onScreenshot, onEraseAll }: ToolDockProps) => {
   const { viewMode, setViewMode, addBlock } = useBuilderStore();
 
   return (
@@ -44,7 +53,14 @@ const ToolDock = ({ activeTool, setActiveTool, canvasLocked, setCanvasLocked, on
   );
 };
 
-const ToolButton = ({ active, onClick, icon, title }) => (
+interface ToolButtonProps {
+  active?: boolean;
+  onClick: () => void;
+  icon: React.ReactNode;
+  title: string;
+}
+
+const ToolButton = ({ active, onClick, icon, title }: ToolButtonProps) => (
   <div className="relative group/btn h-12 flex items-center">
     <button
       onClick={onClick}

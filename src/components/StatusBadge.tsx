@@ -1,7 +1,12 @@
 import React from 'react';
 import { Loader2, CheckCircle2 } from 'lucide-react';
 
-const StatusBadge = ({ state }) => {
+interface StatusBadgeProps {
+  state: 'idle' | 'running' | 'completed' | string;
+  mini?: boolean;
+}
+
+const StatusBadge = ({ state }: StatusBadgeProps) => {
   if (state === 'running') {
     return (
       <div className="flex items-center gap-1.5">

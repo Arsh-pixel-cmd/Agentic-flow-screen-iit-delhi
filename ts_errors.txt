@@ -1,0 +1,56 @@
+src/components/landing/Features.tsx(5,30): error TS7031: Binding element 'Icon' implicitly has an 'any' type.
+src/components/landing/Features.tsx(5,36): error TS7031: Binding element 'title' implicitly has an 'any' type.
+src/components/landing/Features.tsx(5,43): error TS7031: Binding element 'description' implicitly has an 'any' type.
+src/components/landing/Features.tsx(5,56): error TS7031: Binding element 'image' implicitly has an 'any' type.
+src/components/landing/HeroPrompt.tsx(4,30): error TS7031: Binding element 'onInit' implicitly has an 'any' type.
+src/components/landing/index.tsx(11,25): error TS7016: Could not find a declaration file for module '../../lib/auth'. '/Users/arsh/Desktop/work/internship/intershipwork/Agentic-flow-screen-iit-delhi/src/lib/auth/index.js' implicitly has an 'any' type.
+src/components/landing/LivePipelinePreview.tsx(5,25): error TS7031: Binding element 'title' implicitly has an 'any' type.
+src/components/landing/LivePipelinePreview.tsx(5,38): error TS7031: Binding element 'Icon' implicitly has an 'any' type.
+src/components/landing/LivePipelinePreview.tsx(5,44): error TS7031: Binding element 'iconColor' implicitly has an 'any' type.
+src/components/landing/LivePipelinePreview.tsx(5,55): error TS7031: Binding element 'isHighlighted' implicitly has an 'any' type.
+src/components/landing/LivePipelinePreview.tsx(53,14): error TS2741: Property 'isHighlighted' is missing in type '{ title: string; icon: ForwardRefExoticComponent<Omit<LucideProps, "ref"> & RefAttributes<SVGSVGElement>>; iconColor: string; }' but required in type '{ title: any; icon: any; iconColor: any; isHighlighted: any; }'.
+src/components/landing/LivePipelinePreview.tsx(54,14): error TS2741: Property 'isHighlighted' is missing in type '{ title: string; icon: ForwardRefExoticComponent<Omit<LucideProps, "ref"> & RefAttributes<SVGSVGElement>>; iconColor: string; }' but required in type '{ title: any; icon: any; iconColor: any; isHighlighted: any; }'.
+src/components/landing/LivePipelinePreview.tsx(55,14): error TS2741: Property 'isHighlighted' is missing in type '{ title: string; icon: ForwardRefExoticComponent<Omit<LucideProps, "ref"> & RefAttributes<SVGSVGElement>>; iconColor: string; }' but required in type '{ title: any; icon: any; iconColor: any; isHighlighted: any; }'.
+src/components/landing/LivePipelinePreview.tsx(56,14): error TS2741: Property 'isHighlighted' is missing in type '{ title: string; icon: ForwardRefExoticComponent<Omit<LucideProps, "ref"> & RefAttributes<SVGSVGElement>>; iconColor: string; }' but required in type '{ title: any; icon: any; iconColor: any; isHighlighted: any; }'.
+src/components/landing/LivePipelinePreview.tsx(61,14): error TS2741: Property 'isHighlighted' is missing in type '{ title: string; icon: ForwardRefExoticComponent<Omit<LucideProps, "ref"> & RefAttributes<SVGSVGElement>>; iconColor: string; }' but required in type '{ title: any; icon: any; iconColor: any; isHighlighted: any; }'.
+src/components/landing/LivePipelinePreview.tsx(62,14): error TS2741: Property 'isHighlighted' is missing in type '{ title: string; icon: ForwardRefExoticComponent<Omit<LucideProps, "ref"> & RefAttributes<SVGSVGElement>>; iconColor: string; }' but required in type '{ title: any; icon: any; iconColor: any; isHighlighted: any; }'.
+src/components/landing/LivePipelinePreview.tsx(63,14): error TS2741: Property 'isHighlighted' is missing in type '{ title: string; icon: ForwardRefExoticComponent<Omit<LucideProps, "ref"> & RefAttributes<SVGSVGElement>>; iconColor: string; }' but required in type '{ title: any; icon: any; iconColor: any; isHighlighted: any; }'.
+src/components/landing/LivePipelinePreview.tsx(64,14): error TS2741: Property 'isHighlighted' is missing in type '{ title: string; icon: ForwardRefExoticComponent<Omit<LucideProps, "ref"> & RefAttributes<SVGSVGElement>>; iconColor: string; }' but required in type '{ title: any; icon: any; iconColor: any; isHighlighted: any; }'.
+src/components/landing/LivePipelinePreview.tsx(69,14): error TS2741: Property 'isHighlighted' is missing in type '{ title: string; icon: ForwardRefExoticComponent<Omit<LucideProps, "ref"> & RefAttributes<SVGSVGElement>>; iconColor: string; }' but required in type '{ title: any; icon: any; iconColor: any; isHighlighted: any; }'.
+src/components/landing/LivePipelinePreview.tsx(70,14): error TS2741: Property 'isHighlighted' is missing in type '{ title: string; icon: ForwardRefExoticComponent<Omit<LucideProps, "ref"> & RefAttributes<SVGSVGElement>>; iconColor: string; }' but required in type '{ title: any; icon: any; iconColor: any; isHighlighted: any; }'.
+src/components/landing/LivePipelinePreview.tsx(71,14): error TS2741: Property 'isHighlighted' is missing in type '{ title: string; icon: ForwardRefExoticComponent<Omit<LucideProps, "ref"> & RefAttributes<SVGSVGElement>>; iconColor: string; }' but required in type '{ title: any; icon: any; iconColor: any; isHighlighted: any; }'.
+src/components/landing/LivePipelinePreview.tsx(72,14): error TS2741: Property 'isHighlighted' is missing in type '{ title: string; icon: ForwardRefExoticComponent<Omit<LucideProps, "ref"> & RefAttributes<SVGSVGElement>>; iconColor: string; }' but required in type '{ title: any; icon: any; iconColor: any; isHighlighted: any; }'.
+src/components/landing/LivePipelinePreview.tsx(78,14): error TS2741: Property 'isHighlighted' is missing in type '{ title: string; icon: ForwardRefExoticComponent<Omit<LucideProps, "ref"> & RefAttributes<SVGSVGElement>>; iconColor: string; }' but required in type '{ title: any; icon: any; iconColor: any; isHighlighted: any; }'.
+src/components/landing/LivePipelinePreview.tsx(79,14): error TS2741: Property 'isHighlighted' is missing in type '{ title: string; icon: ForwardRefExoticComponent<Omit<LucideProps, "ref"> & RefAttributes<SVGSVGElement>>; iconColor: string; }' but required in type '{ title: any; icon: any; iconColor: any; isHighlighted: any; }'.
+src/components/landing/LivePipelinePreview.tsx(80,14): error TS2741: Property 'isHighlighted' is missing in type '{ title: string; icon: ForwardRefExoticComponent<Omit<LucideProps, "ref"> & RefAttributes<SVGSVGElement>>; iconColor: string; }' but required in type '{ title: any; icon: any; iconColor: any; isHighlighted: any; }'.
+src/components/landing/Navbar.tsx(4,26): error TS7031: Binding element 'user' implicitly has an 'any' type.
+src/components/landing/Navbar.tsx(4,32): error TS7031: Binding element 'setView' implicitly has an 'any' type.
+src/components/landing/Navbar.tsx(4,41): error TS7031: Binding element 'onInit' implicitly has an 'any' type.
+src/components/landing/Pricing.tsx(4,24): error TS7031: Binding element 'title' implicitly has an 'any' type.
+src/components/landing/Pricing.tsx(4,31): error TS7031: Binding element 'price' implicitly has an 'any' type.
+src/components/landing/Pricing.tsx(4,38): error TS7031: Binding element 'description' implicitly has an 'any' type.
+src/components/landing/Pricing.tsx(4,51): error TS7031: Binding element 'features' implicitly has an 'any' type.
+src/components/landing/Pricing.tsx(4,61): error TS7031: Binding element 'isPremium' implicitly has an 'any' type.
+src/components/landing/Pricing.tsx(4,72): error TS7031: Binding element 'buttonText' implicitly has an 'any' type.
+src/components/landing/Pricing.tsx(4,84): error TS7031: Binding element 'onAction' implicitly has an 'any' type.
+src/components/landing/Pricing.tsx(20,22): error TS7006: Parameter 'feature' implicitly has an 'any' type.
+src/components/landing/Pricing.tsx(20,31): error TS7006: Parameter 'i' implicitly has an 'any' type.
+src/components/landing/Pricing.tsx(37,27): error TS7031: Binding element 'onInit' implicitly has an 'any' type.
+src/components/landing/ProfileView.tsx(4,25): error TS7016: Could not find a declaration file for module '../../lib/auth'. '/Users/arsh/Desktop/work/internship/intershipwork/Agentic-flow-screen-iit-delhi/src/lib/auth/index.js' implicitly has an 'any' type.
+src/components/landing/ProfileView.tsx(5,26): error TS7016: Could not find a declaration file for module '../../lib/supabaseClient'. '/Users/arsh/Desktop/work/internship/intershipwork/Agentic-flow-screen-iit-delhi/src/lib/supabaseClient.js' implicitly has an 'any' type.
+src/components/landing/ProfileView.tsx(9,37): error TS7031: Binding element 'propUser' implicitly has an 'any' type.
+src/components/landing/ProfileView.tsx(9,47): error TS7031: Binding element 'onLogout' implicitly has an 'any' type.
+src/components/landing/ProfileView.tsx(76,24): error TS2353: Object literal may only specify known properties, and 'type' does not exist in type '(prevState: null) => null'.
+src/components/landing/ProfileView.tsx(101,26): error TS2353: Object literal may only specify known properties, and 'type' does not exist in type '(prevState: null) => null'.
+src/components/landing/ProfileView.tsx(105,26): error TS2353: Object literal may only specify known properties, and 'type' does not exist in type '(prevState: null) => null'.
+src/components/landing/ProfileView.tsx(108,24): error TS2353: Object literal may only specify known properties, and 'type' does not exist in type '(prevState: null) => null'.
+src/components/landing/ProfileView.tsx(124,24): error TS2353: Object literal may only specify known properties, and 'type' does not exist in type '(prevState: null) => null'.
+src/components/landing/ProfileView.tsx(127,24): error TS2353: Object literal may only specify known properties, and 'type' does not exist in type '(prevState: null) => null'.
+src/components/landing/ProfileView.tsx(282,31): error TS2339: Property 'type' does not exist on type 'never'.
+src/components/landing/ProfileView.tsx(286,32): error TS2339: Property 'type' does not exist on type 'never'.
+src/components/landing/ProfileView.tsx(290,32): error TS2339: Property 'text' does not exist on type 'never'.
+src/components/landing/RegisterView.tsx(3,25): error TS7016: Could not find a declaration file for module '../../lib/auth'. '/Users/arsh/Desktop/work/internship/intershipwork/Agentic-flow-screen-iit-delhi/src/lib/auth/index.js' implicitly has an 'any' type.
+src/components/landing/RegisterView.tsx(5,32): error TS7031: Binding element 'onRegister' implicitly has an 'any' type.
+src/components/landing/RegisterView.tsx(20,19): error TS18046: 'err' is of type 'unknown'.
+src/components/landing/RegisterView.tsx(25,31): error TS7006: Parameter 'e' implicitly has an 'any' type.
+src/components/landing/RegisterView.tsx(53,19): error TS18046: 'err' is of type 'unknown'.

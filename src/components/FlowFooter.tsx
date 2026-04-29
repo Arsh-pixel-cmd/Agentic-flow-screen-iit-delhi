@@ -1,8 +1,21 @@
 import React, { useRef, useEffect } from 'react';
 import { Terminal } from 'lucide-react';
 
-const FlowFooter = ({ flowStatus, logs, completedCount, totalCount }) => {
-  const logRef = useRef(null);
+interface LogEntry {
+  id?: string | number;
+  text: string;
+  type?: 'success' | 'error' | 'info' | string;
+}
+
+interface FlowFooterProps {
+  flowStatus: string;
+  logs: LogEntry[];
+  completedCount: number;
+  totalCount: number;
+}
+
+const FlowFooter = ({ flowStatus, logs, completedCount, totalCount }: FlowFooterProps) => {
+  const logRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (logRef.current) {

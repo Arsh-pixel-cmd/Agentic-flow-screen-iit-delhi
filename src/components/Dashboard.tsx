@@ -7,7 +7,7 @@ import { useAuth } from '../lib/auth';
 
 export default function Dashboard() {
   const [searchQuery, setSearchQuery] = useState('');
-  const [sequences, setSequences] = useState([]);
+  const [sequences, setSequences] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const { user } = useAuth();
 
@@ -53,8 +53,8 @@ export default function Dashboard() {
     }
   };
   
-  const handleDelete = async (id) => {
-    setSequences(sequences.filter(seq => seq.id !== id));
+  const handleDelete = async (id: string | number) => {
+    setSequences(sequences.filter((seq: any) => seq.id !== id));
     await supabase.from('sequences').delete().eq('id', id);
   };
 
@@ -169,7 +169,7 @@ export default function Dashboard() {
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-8">
-               {sequences.filter(seq => seq.title.toLowerCase().includes(searchQuery.toLowerCase())).map((seq, i) => (
+               {sequences.filter((seq: any) => seq.title.toLowerCase().includes(searchQuery.toLowerCase())).map((seq: any, i: number) => (
                  <SessionCard key={seq.id} sequence={seq} index={i} onDelete={handleDelete} />
                ))}
             </div>
@@ -180,8 +180,14 @@ export default function Dashboard() {
   );
 }
 
+interface SidebarItemProps {
+  icon: React.ReactNode;
+  title: string;
+  active?: boolean;
+}
+
 // Simple Sidebar Item Component
-function SidebarItem({ icon, title, active }) {
+function SidebarItem({ icon, title, active }: SidebarItemProps) {
   return (
     <button className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${active ? 'bg-white/[0.08] text-white shadow-inner border border-white/5' : 'text-slate-400 hover:text-white hover:bg-white/[0.04]'}`}>
       {icon}
@@ -190,8 +196,14 @@ function SidebarItem({ icon, title, active }) {
   );
 }
 
+interface SessionCardProps {
+  sequence: any;
+  index: number;
+  onDelete: (id: string | number) => void;
+}
+
 // Session Card Component
-function SessionCard({ sequence, index, onDelete }) {
+function SessionCard({ sequence, index, onDelete }: SessionCardProps) {
   const isComplete = sequence.status === 'Completed';
   const statusColor = sequence.status_color || sequence.statusColor;
   const isStarred = sequence.is_starred || sequence.isStarred;
@@ -199,7 +211,7 @@ function SessionCard({ sequence, index, onDelete }) {
   const totalAgents = sequence.total_agents || sequence.totalAgents || 16;
   const spaceName = sequence.spaces?.name || sequence.space || 'Personal Lab';
 
-  const formatDate = (dateString) => {
+  const formatDate = (dateString: string) => {
     if (!dateString) return 'Just now';
     if (dateString.includes('ago') || dateString === 'Yesterday') return dateString;
     const date = new Date(dateString);

@@ -1,7 +1,17 @@
 import React from 'react';
 import { Check, Zap } from 'lucide-react';
 
-const PricingCard = ({ title, price, description, features, isPremium, buttonText, onAction }) => (
+interface PricingCardProps {
+  title: string;
+  price: string;
+  description: string;
+  features: string[];
+  isPremium: boolean;
+  buttonText: string;
+  onAction: () => void;
+}
+
+const PricingCard = ({ title, price, description, features, isPremium, buttonText, onAction }: PricingCardProps) => (
   <div className={`relative p-8 rounded-3xl bg-[#0A0A0A] border ${isPremium ? 'border-zinc-400 shadow-[0_0_30px_rgba(255,255,255,0.05)] mt-4 md:mt-0' : 'border-white/5'} flex flex-col h-full group hover:border-white/20 transition-colors duration-500`}>
     {isPremium && (
       <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-zinc-100 text-zinc-900 text-[0.65rem] font-bold px-4 py-1.5 rounded-full uppercase tracking-widest shadow-lg z-10 whitespace-nowrap">
@@ -34,7 +44,11 @@ const PricingCard = ({ title, price, description, features, isPremium, buttonTex
   </div>
 );
 
-export const Pricing = ({ onInit }) => (
+interface PricingProps {
+  onInit: () => void;
+}
+
+export const Pricing = ({ onInit }: PricingProps) => (
   <section id="pricing" className="pt-48 pb-48 px-6 bg-[#030303] relative z-20 border-t border-white/5 w-full flex flex-col">
     <div className="max-w-7xl mx-auto w-full">
       <div className="text-center mb-24">

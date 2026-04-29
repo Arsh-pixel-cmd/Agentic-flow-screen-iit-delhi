@@ -1,7 +1,13 @@
 import React from 'react';
 import { Network, User, ChevronRight } from 'lucide-react';
 
-export const Navbar = ({ user, setView, onInit }) => (
+interface NavbarProps {
+  user: any;
+  setView: (view: string) => void;
+  onInit: () => void;
+}
+
+export const Navbar = ({ user, setView, onInit }: NavbarProps) => (
   <nav className="fixed w-full top-0 z-50 bg-[#030303]/70 backdrop-blur-xl border-b border-white/[0.05]">
     <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
       <div className="flex items-center gap-4">
@@ -24,7 +30,7 @@ export const Navbar = ({ user, setView, onInit }) => (
           Documentation
         </button>
         {user ? (
-          <button onClick={() => setView('profile')} className="w-10 h-10 rounded-full bg-zinc-800 border border-white/10 flex items-center justify-center hover:bg-zinc-700 transition-colors shadow-lg group">
+          <button onClick={() => setView('profile')} aria-label="User Profile" title="User Profile" className="w-10 h-10 rounded-full bg-zinc-800 border border-white/10 flex items-center justify-center hover:bg-zinc-700 transition-colors shadow-lg group">
             <User className="w-5 h-5 text-zinc-300 group-hover:text-white transition-colors" />
           </button>
         ) : (

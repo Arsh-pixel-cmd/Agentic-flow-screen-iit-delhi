@@ -3,7 +3,38 @@ import { useBuilderStore } from '../lib/builderStore';
 import AgentBlockNode from './AgentBlockNode';
 import { Trash2 } from 'lucide-react';
 
-const BuilderCanvas = ({ activeTool, setActiveTool, getCanvasCoords }) => {
+interface Coords { x: number; y: number; }
+
+interface DraggingElement {
+  type: 'block' | 'sticky';
+  id: string;
+  startX: number;
+  startY: number;
+  startMouseX: number;
+  startMouseY: number;
+}
+
+interface WiringState {
+  sourceId: string;
+  sourcePort: string | null;
+  startPos: Coords;
+  currentMousePos: Coords;
+}
+
+interface ResizingElement {
+  type: 'block' | 'sticky';
+  id: string;
+  elemX: number;
+  elemY: number;
+}
+
+interface BuilderCanvasProps {
+  activeTool: string;
+  setActiveTool: (tool: string) => void;
+  getCanvasCoords: (clientX: number, clientY: number) => Coords;
+}
+
+const BuilderCanvas = ({ activeTool, setActiveTool, getCanvasCoords }: BuilderCanvasProps) => {
   const { 
     blocks, connections, updateBlock, selectedElementId, 
     setSelectedElementId, connectBlocks,
@@ -12,13 +43,13 @@ const BuilderCanvas = ({ activeTool, setActiveTool, getCanvasCoords }) => {
     nodeStatus
   } = useBuilderStore();
 
-  const [draggingElement, setDraggingElement] = useState(null);
-  const [wiringState, setWiringState] = useState(null);
-  const [resizingElement, setResizingElement] = useState(null);
+  const [draggingElement, setDraggingElement] = useState<DraggingElement | null>(null);
+  const [wiringState, setWiringState] = useState<WiringState | null>(null);
+  const [resizingElement, setResizingElement] = useState<ResizingElement | null>(null);
 
   // Dragging + wiring + resizing logic
   useEffect(() => {
-    const handleMouseMove = (e) => {
+    const handleMouseMove = (e: MouseEvent) => {
       if (draggingElement) {
         const coords = getCanvasCoords(e.clientX, e.clientY);
         const dx = coords.x - draggingElement.startMouseX;
@@ -50,7 +81,7 @@ const BuilderCanvas = ({ activeTool, setActiveTool, getCanvasCoords }) => {
       }
     };
 
-    const handleMouseUp = (e) => {
+    const handleMouseUp = (e: MouseEvent) => {
       if (draggingElement) setDraggingElement(null);
       if (resizingElement) setResizingElement(null);
       
@@ -79,8 +110,9 @@ const BuilderCanvas = ({ activeTool, setActiveTool, getCanvasCoords }) => {
     };
   }, [draggingElement, wiringState, resizingElement, getCanvasCoords, updateBlock, connectBlocks, updateStickyNote]);
 
-  const handleBlockMouseDown = (e, block) => {
-    if (e.target.classList.contains('resize-handle')) {
+  const handleBlockMouseDown = (e: React.MouseEvent, block: any) => {
+    const target = e.target as HTMLElement;
+    if (target.classList.contains('resize-handle')) {
       e.stopPropagation();
       setResizingElement({
         type: 'block',
@@ -92,10 +124,10 @@ const BuilderCanvas = ({ activeTool, setActiveTool, getCanvasCoords }) => {
     }
 
     // Check if clicked port
-    if (e.target.classList.contains('connection-port')) {
+    if (target.classList.contains('connection-port')) {
        e.stopPropagation();
-       const portPosition = e.target.getAttribute('data-port-position');
-       const blockRect = e.target.getBoundingClientRect();
+       const portPosition = target.getAttribute('data-port-position');
+       const blockRect = target.getBoundingClientRect();
        const portCenterX = blockRect.left + blockRect.width / 2;
        const portCenterY = blockRect.top + blockRect.height / 2;
        const canvasStartCoords = getCanvasCoords(portCenterX, portCenterY);
@@ -125,8 +157,9 @@ const BuilderCanvas = ({ activeTool, setActiveTool, getCanvasCoords }) => {
     }
   };
 
-  const handleStickyMouseDown = (e, note) => {
-    if (e.target.classList.contains('resize-handle')) {
+  const handleStickyMouseDown = (e: React.MouseEvent, note: any) => {
+    const target = e.target as HTMLElement;
+    if (target.classList.contains('resize-handle')) {
       e.stopPropagation();
       setResizingElement({
         type: 'sticky',
@@ -153,8 +186,8 @@ const BuilderCanvas = ({ activeTool, setActiveTool, getCanvasCoords }) => {
   };
 
   // Handle canvas click for adding tools
-  const handleCanvasClick = (e) => {
-    if (e.target.id === 'builder-canvas-area') {
+  const handleCanvasClick = (e: React.MouseEvent) => {
+    if ((e.target as HTMLElement).id === 'builder-canvas-area') {
       if (activeTool === 'sticky') {
         const coords = getCanvasCoords(e.clientX, e.clientY);
         addStickyNote(coords);
@@ -168,9 +201,9 @@ const BuilderCanvas = ({ activeTool, setActiveTool, getCanvasCoords }) => {
   };
 
   const renderConnections = () => {
-    const paths = connections.map(conn => {
-      const srcBlock = blocks.find(b => b.id === conn.sourceBlockId);
-      const tgtBlock = blocks.find(b => b.id === conn.targetBlockId);
+    const paths = connections.map((conn: any) => {
+      const srcBlock = blocks.find((b: any) => b.id === conn.sourceBlockId);
+      const tgtBlock = blocks.find((b: any) => b.id === conn.targetBlockId);
       if (!srcBlock || !tgtBlock) return null;
 
       const srcW = srcBlock.size?.width || 260;
@@ -183,7 +216,7 @@ const BuilderCanvas = ({ activeTool, setActiveTool, getCanvasCoords }) => {
       const sPort = conn.sourcePort || (isSrcAbove ? 'bottom' : 'top');
       const tPort = conn.targetPort || (isSrcAbove ? 'top' : 'bottom');
 
-      const getAnchor = (block, port, width, height) => {
+      const getAnchor = (block: any, port: string, width: number, height: number) => {
         if (port === 'top') return { x: block.position.x + width / 2, y: block.position.y - 12 };
         if (port === 'bottom') return { x: block.position.x + width / 2, y: block.position.y + height };
         if (port === 'left') return { x: block.position.x - 12, y: block.position.y + height / 2 };
@@ -271,7 +304,7 @@ const BuilderCanvas = ({ activeTool, setActiveTool, getCanvasCoords }) => {
       </svg>
       
       {/* Agent Blocks */}
-      {blocks.map(block => (
+      {blocks.map((block: any) => (
         <div key={block.id} className="pointer-events-auto absolute" onMouseDown={(e) => handleBlockMouseDown(e, block)}>
           <AgentBlockNode
             block={block}
@@ -281,7 +314,7 @@ const BuilderCanvas = ({ activeTool, setActiveTool, getCanvasCoords }) => {
       ))}
 
       {/* Builder Sticky Notes */}
-      {stickyNotes.map(note => {
+      {stickyNotes.map((note: any) => {
         const noteColor = note.color || '#A259FF';
         const noteW = note.size?.width || 220;
         const noteH = note.size?.height || 160;
@@ -338,7 +371,7 @@ const BuilderCanvas = ({ activeTool, setActiveTool, getCanvasCoords }) => {
       })}
 
       {/* Builder Text Labels */}
-      {textLabels.map(label => (
+      {textLabels.map((label: any) => (
         <div
           key={`builder-label-${label.id}`}
           className="absolute z-20 pointer-events-auto group"

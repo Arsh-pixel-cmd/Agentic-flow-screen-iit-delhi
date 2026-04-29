@@ -2,7 +2,23 @@ import React from 'react';
 import { Settings, Play, Clock } from 'lucide-react';
 import { useBuilderStore } from '../lib/builderStore';
 
-const AgentBlockNode = ({ block, isSelected }) => {
+interface BlockData {
+  id: string;
+  name?: string;
+  description?: string;
+  position: { x: number; y: number };
+  size?: { width?: number; height?: number };
+  triggerConfig: { type: string; [key: string]: any };
+  waitConfig: { type: string; [key: string]: any };
+  [key: string]: any;
+}
+
+interface AgentBlockNodeProps {
+  block: BlockData;
+  isSelected: boolean;
+}
+
+const AgentBlockNode = ({ block, isSelected }: AgentBlockNodeProps) => {
   const { setSelectedElementId, nodeStatus } = useBuilderStore();
   const status = nodeStatus[block.id] || 'idle';
   const blockW = block.size?.width || 260;

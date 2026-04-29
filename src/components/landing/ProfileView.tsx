@@ -6,7 +6,17 @@ import { supabase } from '../../lib/supabaseClient';
 
 const API_BASE = 'http://localhost:3001';
 
-export const ProfileView = ({ user: propUser, onLogout }) => {
+interface ProfileViewProps {
+  user?: any;
+  onLogout?: () => void;
+}
+
+interface SaveMessage {
+  type: 'success' | 'error';
+  text: string;
+}
+
+export const ProfileView = ({ user: propUser, onLogout }: ProfileViewProps) => {
   const navigate = useNavigate();
   const { user: authUser, signOut, getProfile } = useAuth();
   const [workflowCount, setWorkflowCount] = useState(0);
@@ -25,7 +35,7 @@ export const ProfileView = ({ user: propUser, onLogout }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [saveMessage, setSaveMessage] = useState(null); // { type: 'success' | 'error', text }
+  const [saveMessage, setSaveMessage] = useState<SaveMessage | null>(null);
 
   // ── Fetch user profile and stats ──────────────────────────
   useEffect(() => {
@@ -155,6 +165,8 @@ export const ProfileView = ({ user: propUser, onLogout }) => {
           <div className="flex items-center gap-4">
             <button 
               onClick={() => navigate('/dashboard')}
+              aria-label="Back to Dashboard"
+              title="Back to Dashboard"
               className="w-10 h-10 flex items-center justify-center rounded-xl bg-white/5 border border-white/10 text-zinc-400 hover:text-white transition-all hover:bg-white/10"
             >
               <ArrowLeft className="w-5 h-5" />
