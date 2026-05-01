@@ -3,9 +3,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import crypto from 'crypto';
 import { createServer } from 'http';
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
-import { join, dirname } from 'path';
-import { fileURLToPath } from 'url';
+import { createClient } from '@supabase/supabase-js';
 
 dotenv.config();
 
@@ -15,15 +13,17 @@ app.use(express.json());
 
 const PORT = process.env.PORT || 3001;
 
-// ── ENCRYPTION & KEY MANAGEMENT (AES-256-GCM) ──────────────────────
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-const ENCRYPTION_SECRET = process.env.ENCRYPTION_SECRET || 'agentic-flow-default-secret-change-in-production!!';
-const KEY_STORE_PATH = join(__dirname, 'memory', 'keys.enc.json');
-const memDir = dirname(KEY_STORE_PATH);
-if (!existsSync(memDir)) mkdirSync(memDir, { recursive: true });
+// ── SUPABASE CLIENT ──────────────────────────────────────────────
+const supabaseUrl = process.env.VITE_SUPABASE_URL;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
 
-const PROJECT_KEY_STORE_PATH = join(__dirname, 'memory', 'project_keys.enc.json');
+if (!supabaseUrl || !supabaseServiceKey) {
+  console.warn('[Server] Supabase credentials missing! API Key storage may fail.');
+}
+const supabase = createClient(supabaseUrl || '', supabaseServiceKey || '');
+
+// ── ENCRYPTION & KEY MANAGEMENT (AES-256-GCM) ──────────────────────
+const ENCRYPTION_SECRET = process.env.ENCRYPTION_SECRET || 'agentic-flow-default-secret-change-in-production!!';
 
 function deriveKey(secret) {
   return crypto.scryptSync(secret, 'agentic-flow-salt', 32);
@@ -49,48 +49,64 @@ function decryptKey(encData) {
   return decrypted;
 }
 
-function loadKeyStore() {
-  if (!existsSync(KEY_STORE_PATH)) return {};
-  try { return JSON.parse(readFileSync(KEY_STORE_PATH, 'utf8')); }
-  catch { return {}; }
+async function getStoredKey(userId, projectId = 'global') {
+  if (!userId) return null;
+  const { data, error } = await supabase
+    .from('user_keys')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('project_id', projectId)
+    .single();
+  if (error || !data) return null;
+  return data;
 }
 
-function saveKeyStore(store) {
-  writeFileSync(KEY_STORE_PATH, JSON.stringify(store, null, 2));
+async function saveStoredKey(userId, projectId, encryptedData, lastFour) {
+  const { error } = await supabase
+    .from('user_keys')
+    .upsert({
+      user_id: userId,
+      project_id: projectId,
+      encrypted: encryptedData.encrypted,
+      iv: encryptedData.iv,
+      auth_tag: encryptedData.authTag,
+      last_four: lastFour,
+      saved_at: new Date().toISOString()
+    }, { onConflict: 'user_id, project_id' });
+  if (error) throw new Error(error.message);
 }
 
-function loadProjectKeyStore() {
-  if (!existsSync(PROJECT_KEY_STORE_PATH)) return {};
-  try { return JSON.parse(readFileSync(PROJECT_KEY_STORE_PATH, 'utf8')); }
-  catch { return {}; }
-}
-
-function saveProjectKeyStore(store) {
-  writeFileSync(PROJECT_KEY_STORE_PATH, JSON.stringify(store, null, 2));
+async function deleteStoredKey(userId, projectId = 'global') {
+  const { error } = await supabase
+    .from('user_keys')
+    .delete()
+    .eq('user_id', userId)
+    .eq('project_id', projectId);
+  if (error) throw new Error(error.message);
 }
 
 /**
  * Resolve the API key for a user.
  * Priority: project-stored encrypted key > global-stored encrypted key > fallback key from client.
  */
-function resolveApiKey(userId, sequenceId, fallbackKey) {
+async function resolveApiKey(userId, sequenceId, fallbackKey) {
   if (userId) {
     // 1. Try project-scoped key
     if (sequenceId) {
-      const pStore = loadProjectKeyStore();
-      const pKey = `${userId}:${sequenceId}`;
-      if (pStore[pKey]) {
-        try { return decryptKey(pStore[pKey]); }
-        catch (err) { console.error('[Server] Project key decryption failed:', err.message); }
+      const pData = await getStoredKey(userId, sequenceId);
+      if (pData) {
+        try { 
+          return decryptKey({ encrypted: pData.encrypted, iv: pData.iv, authTag: pData.auth_tag }); 
+        } catch (err) { console.error('[Server] Project key decryption failed:', err.message); }
       }
     }
 
     // 2. Try global key
-    const store = loadKeyStore();
-    const entry = store[userId];
-    if (entry) {
-      try { return decryptKey(entry); }
-      catch (err) { console.error('[Server] Global key decryption failed:', err.message); }
+    const gData = await getStoredKey(userId, 'global');
+    if (gData) {
+      try { 
+        return decryptKey({ encrypted: gData.encrypted, iv: gData.iv, authTag: gData.auth_tag }); 
+      } catch (err) { console.error('[Server] Global key decryption failed:', err.message); }
     }
   }
   return fallbackKey || '';
@@ -119,7 +135,7 @@ app.get('/api/health', (req, res) => {
 });
 
 // Save (or replace) an API key — encrypted at rest
-app.post('/api/keys/save', (req, res) => {
+app.post('/api/keys/save', async (req, res) => {
   const { userId, apiKey } = req.body;
   if (!userId || !apiKey) {
     return res.status(400).json({ error: 'userId and apiKey are required.' });
@@ -128,15 +144,11 @@ app.post('/api/keys/save', (req, res) => {
   try {
     const trimmed = apiKey.trim();
     const encryptedData = encryptKey(trimmed);
-    const store = loadKeyStore();
-    store[userId] = {
-      ...encryptedData,
-      lastFour: trimmed.slice(-4),
-      savedAt: new Date().toISOString(),
-    };
-    saveKeyStore(store);
+    const lastFour = trimmed.slice(-4);
+    
+    await saveStoredKey(userId, 'global', encryptedData, lastFour);
     console.log(`[Server] ✓ API key saved for user ${userId.substring(0, 8)}...`);
-    res.json({ success: true, lastFour: store[userId].lastFour });
+    res.json({ success: true, lastFour });
   } catch (err) {
     console.error('[Server] Failed to save key:', err.message);
     res.status(500).json({ error: 'Failed to encrypt and save the key.' });
@@ -144,50 +156,53 @@ app.post('/api/keys/save', (req, res) => {
 });
 
 // Check if a key exists for a user (never returns the actual key)
-app.get('/api/keys/status/:userId', (req, res) => {
+app.get('/api/keys/status/:userId', async (req, res) => {
   const { userId } = req.params;
-  const store = loadKeyStore();
-  const entry = store[userId];
+  const entry = await getStoredKey(userId, 'global');
   if (!entry) return res.json({ hasKey: false });
-  res.json({ hasKey: true, lastFour: entry.lastFour || '****', savedAt: entry.savedAt });
+  res.json({ hasKey: true, lastFour: entry.last_four || '****', savedAt: entry.saved_at });
 });
 
-app.get('/api/keys/project-status/:userId/:sequenceId', (req, res) => {
+app.get('/api/keys/project-status/:userId/:sequenceId', async (req, res) => {
   const { userId, sequenceId } = req.params;
-  const store = loadProjectKeyStore();
-  const entry = store[`${userId}:${sequenceId}`];
+  const entry = await getStoredKey(userId, sequenceId);
   if (!entry) return res.json({ hasKey: false });
-  res.json({ hasKey: true, lastFour: entry.lastFour || '****' });
+  res.json({ hasKey: true, lastFour: entry.last_four || '****' });
 });
 
-app.post('/api/keys/save-project', (req, res) => {
+app.post('/api/keys/save-project', async (req, res) => {
   const { userId, sequenceId, apiKey } = req.body;
   if (!userId || !sequenceId || !apiKey) return res.status(400).json({ error: 'Missing data' });
 
-  const store = loadProjectKeyStore();
-  const encrypted = encryptKey(apiKey);
-  encrypted.lastFour = apiKey.slice(-4);
-  store[`${userId}:${sequenceId}`] = encrypted;
-  saveProjectKeyStore(store);
-
-  res.json({ success: true });
+  try {
+    const encrypted = encryptKey(apiKey);
+    const lastFour = apiKey.slice(-4);
+    await saveStoredKey(userId, sequenceId, encrypted, lastFour);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Delete a stored key
-app.delete('/api/keys/:userId', (req, res) => {
-  const store = loadKeyStore();
-  delete store[req.params.userId];
-  saveKeyStore(store);
-  console.log(`[Server] ✗ API key deleted for user ${req.params.userId.substring(0, 8)}...`);
-  res.json({ success: true });
+app.delete('/api/keys/:userId', async (req, res) => {
+  try {
+    await deleteStoredKey(req.params.userId, 'global');
+    console.log(`[Server] ✗ API key deleted for user ${req.params.userId.substring(0, 8)}...`);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-app.delete('/api/keys/project/:userId/:sequenceId', (req, res) => {
+app.delete('/api/keys/project/:userId/:sequenceId', async (req, res) => {
   const { userId, sequenceId } = req.params;
-  const store = loadProjectKeyStore();
-  delete store[`${userId}:${sequenceId}`];
-  saveProjectKeyStore(store);
-  res.json({ success: true });
+  try {
+    await deleteStoredKey(userId, sequenceId);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Verify a stored key works by making a lightweight test call
@@ -195,7 +210,7 @@ app.post('/api/keys/verify', async (req, res) => {
   const { userId } = req.body;
   if (!userId) return res.status(400).json({ error: 'userId is required.' });
 
-  const apiKey = resolveApiKey(userId);
+  const apiKey = await resolveApiKey(userId, null, null);
   if (!apiKey) return res.json({ valid: false, reason: 'No key stored.' });
 
   const { url, defaultModel } = determineProvider(apiKey);
@@ -223,7 +238,7 @@ app.post('/api/llm', async (req, res) => {
   console.log(`[Server] Incoming request for agent: ${agent?.name || 'unknown'}, phase: ${agent?.phaseLabel || 'unknown'}`);
 
   // Resolve key: project > global > client-provided
-  const resolvedKey = resolveApiKey(userId, sequenceId, activeKey);
+  const resolvedKey = await resolveApiKey(userId, sequenceId, activeKey);
 
   if (!resolvedKey) {
     return res.status(401).json({
@@ -366,7 +381,7 @@ app.post('/api/agent/stream', async (req, res) => {
   res.setHeader('Connection', 'keep-alive');
 
   // Resolve key: prefer server-stored encrypted key
-  const resolvedKey = resolveApiKey(userId, activeKey);
+  const resolvedKey = await resolveApiKey(userId, null, activeKey);
 
   if (!resolvedKey) {
     res.write('data: {"choices":[{"delta":{"content":"No API key detected. Add one in Profile → API Key Management.\\n"}}]}\n\n');
@@ -408,9 +423,13 @@ app.post('/api/agent/stream', async (req, res) => {
 });
 
 // Use http.createServer to keep the process alive (Express 5 compat)
-const server = createServer(app);
-server.listen(PORT, () => {
-  console.log(`[Agentic Flow] ✓ Backend server running on http://localhost:${PORT}`);
-  console.log(`[Agentic Flow] ✓ Health check: http://localhost:${PORT}/api/health`);
-  console.log(`[Agentic Flow] ✓ Key Management: /api/keys/save, /api/keys/status/:userId`);
-});
+if (!process.env.VERCEL) {
+  const server = createServer(app);
+  server.listen(PORT, () => {
+    console.log(`[Agentic Flow] ✓ Backend server running on http://localhost:${PORT}`);
+    console.log(`[Agentic Flow] ✓ Health check: http://localhost:${PORT}/api/health`);
+    console.log(`[Agentic Flow] ✓ Key Management: /api/keys/save, /api/keys/status/:userId`);
+  });
+}
+
+export default app;

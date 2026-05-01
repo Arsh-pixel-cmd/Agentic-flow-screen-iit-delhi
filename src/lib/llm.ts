@@ -4,6 +4,8 @@
 
 import { supabase } from './supabaseClient';
 
+const API_BASE = import.meta.env.PROD ? '' : 'http://localhost:3001';
+
 /**
  * Get the current authenticated user's ID for server-side key resolution.
  */
@@ -24,7 +26,7 @@ export async function getKeyStatus() {
   if (!userId) return { any: false, serverKey: false };
 
   try {
-    const res = await fetch(`http://localhost:3001/api/keys/status/${userId}`);
+    const res = await fetch(`${API_BASE}/api/keys/status/${userId}`);
     const data = await res.json();
     return { any: data.hasKey, serverKey: data.hasKey, lastFour: data.lastFour };
   } catch {
@@ -40,7 +42,7 @@ export async function getProjectKeyStatus(sequenceId: string) {
   if (!userId || !sequenceId) return { hasKey: false };
 
   try {
-    const res = await fetch(`http://localhost:3001/api/keys/project-status/${userId}/${sequenceId}`);
+    const res = await fetch(`${API_BASE}/api/keys/project-status/${userId}/${sequenceId}`);
     const data = await res.json();
     return { hasKey: data.hasKey, lastFour: data.lastFour };
   } catch {
@@ -95,7 +97,7 @@ export async function callLLM(userTask: any, agent: any, neuralContext: any = ''
     };
   }
 
-  const API_URL = 'http://localhost:3001/api/llm';
+  const API_URL = `${API_BASE}/api/llm`;
 
   try {
     const sequenceId = localStorage.getItem('active_sequence_id');

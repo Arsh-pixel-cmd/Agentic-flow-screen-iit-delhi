@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../lib/auth';
 import { supabase } from '../../lib/supabaseClient';
 
-const API_BASE = 'http://localhost:3001';
+const API_BASE = import.meta.env.PROD ? '' : 'http://localhost:3001';
 
 interface ProfileViewProps {
   user?: any;
