@@ -1286,7 +1286,8 @@ const ApiKeyModal = ({ type, onClose, onSaved }: { type: string, onClose: () => 
         ? { userId: session.user.id, sequenceId: seqId, apiKey: key.trim() }
         : { userId: session.user.id, apiKey: key.trim() };
 
-      const res = await fetch(`http://localhost:3001${endpoint}`, {
+      const API_BASE = import.meta.env.PROD ? '' : 'http://localhost:3001';
+      const res = await fetch(`${API_BASE}${endpoint}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
