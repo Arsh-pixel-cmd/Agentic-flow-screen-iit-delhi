@@ -291,15 +291,15 @@ ${neuralContext ? `PREVIOUS NEURAL BRIDGE DATA:\n${neuralContext}\n\nBuild upon 
 RESPONSE FORMAT — Return a valid JSON object with exactly two keys:
 {
   "content": "Your complete text output based on the Node Deliverable Spec. Include status like [Sequence Complete] at the end.",
-  "ui": "A self-contained HTML component that renders your output beautifully. Use ONLY inline styles. 
+  "ui": "A self-contained HTML component that renders your output beautifully. Use ONLY valid HTML tags with inline styles. DO NOT USE MARKDOWN. NO **bold**, NO ## headers. Use <strong>, <h1>, <ul>, etc.
          Midnight Luxe Design System:
-         - Backgrounds: Deep black (#000000) or high-gloss navy-black (#0a0a0f). Use glassmorphism where applicable (backdrop-filter: blur(16px), background: rgba(255,255,255,0.02)).
-         - Accents: Electric Purple (#A259FF) for primary highlights, Azure Blue (#46B1FF) for connections/data, Lime Green (#DEF767) for success.
+         - Backgrounds: Deep black (#000000) or high-gloss navy-black (#0a0a0f). Use glassmorphism (backdrop-filter: blur(16px), background: rgba(255,255,255,0.02)).
+         - Accents: Electric Purple (#A259FF), Azure Blue (#46B1FF), Lime Green (#DEF767).
          - Borders: 1px solid rgba(255,255,255,0.08).
-         - Typography: Header fonts should use 'Syne, sans-serif', body font 'Outfit, sans-serif'. Use tracking (letter-spacing) on caps text.
-         - Layout: High-end UI, generous padding (32px), rounded corners (24px). Grid layouts for data."
+         - Typography: Headers use 'Syne, sans-serif', body uses 'Outfit, sans-serif'.
+         - Tables: Render any tables as beautiful HTML <table> elements."
 }
-CRITICAL: Return ONLY the raw JSON object. No markdown fences.`;
+CRITICAL: Return ONLY the raw JSON object. No markdown fences. NO Markdown syntax in the UI field.`;
 
   try {
     console.log(`[Server] Sending request to LLM provider...`);
@@ -346,13 +346,58 @@ CRITICAL: Return ONLY the raw JSON object. No markdown fences.`;
     let raw = data.choices?.[0]?.message?.content || '';
     console.log(`[Server] Raw LLM response length: ${raw.length} chars`);
     
-    // Strip markdown fences if the LLM wraps them anyway
-    raw = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim();
+    const formatMarkdownToHTML = (text) => {
+      if (!text) return '';
+      return text
+        .replace(/\*\*(.*?)\*\*/g, '<strong style="color:#A259FF">$1</strong>')
+        .replace(/\*(.*?)\*/g, '<em>$1</em>')
+        .replace(/### (.*?)\n/g, '<h3 style="color:#fff;margin-top:16px;font-family:Syne,sans-serif">$1</h3>')
+        .replace(/## (.*?)\n/g, '<h2 style="color:#fff;margin-top:20px;border-bottom:1px solid rgba(255,255,255,0.1);padding-bottom:8px;font-family:Syne,sans-serif">$1</h2>')
+        .replace(/# (.*?)\n/g, '<h1 style="color:#fff;margin-top:24px;font-family:Syne,sans-serif">$1</h1>')
+        .replace(/\n\n/g, '<br/><br/>')
+        .replace(/\n/g, '<br/>');
+    };
 
-    const parsed = JSON.parse(raw);
-    if (!parsed.content || !parsed.ui) throw new Error('Response missing required "content" or "ui" fields.');
+    let parsed;
+    try {
+      const firstBrace = raw.indexOf('{');
+      const lastBrace = raw.lastIndexOf('}');
+      if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+        let extractedRaw = raw.substring(firstBrace, lastBrace + 1);
+        const cleanedRaw = extractedRaw.replace(/[\u0000-\u0019]+/g, "");
+        parsed = JSON.parse(cleanedRaw);
+        if (!parsed.content || !parsed.ui) throw new Error('Response missing required fields.');
+        
+        // If the LLM still returned markdown in the UI instead of HTML, format it beautifully
+        if (!/<[a-z][\s\S]*>/i.test(parsed.ui) || parsed.ui.includes('**')) {
+          let safeContent = parsed.ui.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+          parsed.ui = `<div style="padding:32px; color:#e2e8f0; font-family:Outfit,sans-serif; line-height:1.7; font-size:15px; background:rgba(255,255,255,0.02); border-radius:24px; border:1px solid rgba(255,255,255,0.05);">${formatMarkdownToHTML(safeContent)}</div>`;
+        }
+      } else {
+        throw new Error('No valid JSON object found in response.');
+      }
+    } catch (parseError) {
+      console.warn(`[Server] Strict JSON parse failed for ${agent.name}. Salvaging content...`);
+      let salvagedContent = raw;
+      const contentRegex = /"content"\s*:\s*"?([\s\S]*?)"?(?:,\s*"ui"|\}$)/;
+      const match = raw.match(contentRegex);
+      if (match && match[1]) {
+          salvagedContent = match[1].replace(/\\n/g, '\n').replace(/\\"/g, '"');
+      }
 
-    console.log(`[Server] Successfully parsed LLM output for ${agent.name}`);
+      let safeContent = salvagedContent.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      let htmlContent = formatMarkdownToHTML(safeContent);
+
+      parsed = {
+        content: salvagedContent,
+        ui: `<div style="padding:32px; color:#e2e8f0; font-family:Outfit,sans-serif; line-height:1.7; font-size:15px; background:rgba(255,255,255,0.02); border-radius:24px; border:1px solid rgba(255,255,255,0.05);">
+               <div style="color:#DEF767; font-size:10px; font-weight:bold; margin-bottom:20px; text-transform:uppercase; letter-spacing:1px; border:1px solid rgba(222,247,103,0.3); padding:4px 8px; border-radius:6px; display:inline-block; background:rgba(222,247,103,0.1);">Auto-Recovered Mode</div>
+               ${htmlContent}
+             </div>`
+      };
+    }
+
+    console.log(`[Server] Successfully processed LLM output for ${agent.name}`);
     res.json(parsed);
   } catch (error) {
     console.error(`[Server] LLM Fallback Triggered:`, error.message);

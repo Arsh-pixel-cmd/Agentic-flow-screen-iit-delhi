@@ -1,10 +1,11 @@
 import React from 'react';
 import {
   Search, Eye, Users, BookOpen, User, Compass, Target, Lightbulb,
-  Sparkles, Layers, Box, Palette, ShieldCheck, RefreshCw, FileText, Rocket,
+  Sparkles, Layers, Box, Palette, ShieldCheck, RefreshCw, FileText, Rocket, AlertTriangle
 } from 'lucide-react';
 import StatusBadge from './StatusBadge';
 import ThinkingTerminal from './ThinkingTerminal';
+import { useWorkflowStore } from '../lib/store';
 
 const ICON_MAP = {
   Search, Eye, Users, BookOpen, User, Compass, Target, Lightbulb,
@@ -109,6 +110,32 @@ const NodeContainer = ({ node, state, onClick, isVisible = true }: NodeContainer
       >
         <div className="w-1 h-1 rounded-full" style={{ background: '#334155' }} />
       </div>
+
+      {/* Stuck Debugger Overlay */}
+      {state === 'stuck_debugger' && (
+        <div className="absolute inset-0 bg-red-950/95 rounded-2xl backdrop-blur-md flex flex-col items-center justify-center p-2 z-20 border border-red-500/50">
+          <AlertTriangle size={20} className="text-red-400 mb-1" />
+          <span className="text-[9px] font-bold text-red-200 uppercase tracking-widest text-center leading-tight mb-2">Process<br/>Halted</span>
+          <div className="flex gap-1.5 mt-auto w-full px-1">
+             <button 
+               onClick={(e) => { e.stopPropagation(); useWorkflowStore.getState().setNodeState(node.id, 'running'); }}
+               className="flex-1 bg-red-500/20 text-red-200 text-[9px] font-bold py-1.5 rounded hover:bg-red-500/40 transition-colors"
+             >
+               RETRY
+             </button>
+             <button 
+               onClick={(e) => { 
+                 e.stopPropagation(); 
+                 useWorkflowStore.getState().setNodeResult(node.id, { content: 'Skipped manually', ui: '<div style="padding:20px;color:#888;">Manually skipped by user.</div>' });
+                 useWorkflowStore.getState().setNodeState(node.id, 'completed'); 
+               }}
+               className="flex-1 bg-white/10 text-white text-[9px] font-bold py-1.5 rounded hover:bg-white/20 transition-colors"
+             >
+               SKIP
+             </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
