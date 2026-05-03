@@ -50,6 +50,7 @@ const Engine = () => {
 
   const [phaseOverlay, setPhaseOverlay] = useState<any>(null);
   const [showOutputScreen, setShowOutputScreen] = useState(false);
+  const [isCommandExpanded, setIsCommandExpanded] = useState(false);
 
 
   // Canvas Viewport logic
@@ -339,27 +340,36 @@ const Engine = () => {
       if (canvasLocked) { e.preventDefault(); return; }
       if (e.ctrlKey || e.metaKey) {
         e.preventDefault();
-        setCamera((prev) => {
-          const newZoom = Math.min(Math.max(prev.zoom - e.deltaY * 0.0004, 0.15), 2);
-          const zoomRatio = newZoom / prev.zoom;
-
-          const rect = canvas.getBoundingClientRect();
-          const mouseX = e.clientX - rect.left;
-          const mouseY = e.clientY - rect.top;
-
-          return {
-            zoom: newZoom,
-            x: mouseX - (mouseX - prev.x) * zoomRatio,
-            y: mouseY - (mouseY - prev.y) * zoomRatio,
-          };
-        });
-      } else {
-        setCamera((prev: any) => ({
-          ...prev,
-          x: prev.x - e.deltaX,
-          y: prev.y - e.deltaY,
-        }));
       }
+
+      requestAnimationFrame(() => {
+        if (e.ctrlKey || e.metaKey) {
+          setCamera((prev) => {
+            // Exponential zoom scaling for smooth, natural feeling zoom
+            const zoomMultiplier = Math.exp(-e.deltaY * 0.005);
+            // Expanded zoom bounds for more freedom
+            const newZoom = Math.min(Math.max(prev.zoom * zoomMultiplier, 0.05), 4);
+            const zoomRatio = newZoom / prev.zoom;
+
+            const rect = canvas.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+
+            return {
+              zoom: newZoom,
+              x: mouseX - (mouseX - prev.x) * zoomRatio,
+              y: mouseY - (mouseY - prev.y) * zoomRatio,
+            };
+          });
+        } else {
+          setCamera((prev: any) => ({
+            ...prev,
+            // Accelerated panning for smoother surfing
+            x: prev.x - e.deltaX * 1.5,
+            y: prev.y - e.deltaY * 1.5,
+          }));
+        }
+      });
     };
 
     canvas.addEventListener('wheel', onWheel, { passive: false });
@@ -429,10 +439,13 @@ const Engine = () => {
       }
 
       if (isPanning) {
-        const dx = e.clientX - lastMousePos.current.x;
-        const dy = e.clientY - lastMousePos.current.y;
-        setCamera((prev: any) => ({ ...prev, x: prev.x + dx, y: prev.y + dy }));
-        lastMousePos.current = { x: e.clientX, y: e.clientY };
+        requestAnimationFrame(() => {
+          const dx = e.clientX - lastMousePos.current.x;
+          const dy = e.clientY - lastMousePos.current.y;
+          // Apply a smooth 1.5x speed boost to manual panning so it doesn't feel heavy
+          setCamera((prev: any) => ({ ...prev, x: prev.x + dx * 1.5, y: prev.y + dy * 1.5 }));
+          lastMousePos.current = { x: e.clientX, y: e.clientY };
+        });
       } else if (isDrawingRef.current && activeTool === 'highlighter') {
         const coords = getCanvasCoords(e.clientX, e.clientY);
         currentStrokeRef.current.push(coords);
@@ -545,7 +558,6 @@ const Engine = () => {
         }
         
         await Promise.all(nodesAtDepth.map(async (nId: any) => {
-          store.setNodeState(nId, 'running');
           const nodeInfo = (layout as any)[nId];
           const agentData = {
             id: nId,
@@ -554,14 +566,48 @@ const Engine = () => {
             name: nodeInfo?.category?.name || 'Agent'
           };
 
-          try {
-            const taskObj = `Project directive: ${store.projectPrompt}\n\nExecute agentic objective for ${agentData.name} within the ${agentData.phaseLabel} architecture phase. Provide deep expert analysis based on the project directive.`;
-            const result = await callLLM(taskObj, agentData, neuralContext, store.projectAttachment);
-            store.setNodeResult(nId, result);
-          } catch (err: any) {
-            console.error(`[${nId}] Error:`, err);
+          let resolved = false;
+          while (!resolved) {
+            store.setNodeState(nId, 'running');
+            try {
+              const taskObj = `Project directive: ${store.projectPrompt}\n\nExecute agentic objective for ${agentData.name} within the ${agentData.phaseLabel} architecture phase. Provide deep expert analysis based on the project directive.`;
+              
+              const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT_STUCK')), 45000));
+              const result: any = await Promise.race([
+                callLLM(taskObj, agentData, neuralContext, store.projectAttachment),
+                timeoutPromise
+              ]);
+
+              if (result && result._errorType) {
+                 store.setNodeResult(nId, result);
+                 store.setNodeState(nId, 'stuck_debugger');
+              } else {
+                 store.setNodeResult(nId, result);
+                 store.setNodeState(nId, 'completed');
+                 resolved = true;
+                 break;
+              }
+            } catch (err: any) {
+              console.error(`[${nId}] Error:`, err);
+              store.setNodeState(nId, 'stuck_debugger');
+            }
+
+            if (!resolved) {
+              await new Promise<void>((resolve) => {
+                const checkInterval = setInterval(() => {
+                  const currentState = useWorkflowStore.getState().nodeStates[nId];
+                  if (currentState === 'completed') {
+                    clearInterval(checkInterval);
+                    resolved = true;
+                    resolve();
+                  } else if (currentState === 'running') {
+                    clearInterval(checkInterval);
+                    resolve();
+                  }
+                }, 500);
+              });
+            }
           }
-          store.setNodeState(nId, 'completed');
         }));
 
         if (d < maxDepth) {
@@ -597,7 +643,6 @@ const Engine = () => {
         }
 
         await Promise.all(phaseNodes.map(async (nId: any) => {
-          store.setNodeState(nId, 'running');
           const nodeCategory = nId.split('::')[1];
           const agentData = {
             id: nId,
@@ -606,14 +651,48 @@ const Engine = () => {
             name: (layout as any)[nId]?.category?.name || nodeCategory
           };
 
-          try {
-            const taskObj = `Project directive: ${store.projectPrompt}\n\nExecute agentic objective for ${agentData.name} within the ${agentData.phaseLabel} architecture phase. Provide deep expert analysis based on the project directive.`;
-            const result = await callLLM(taskObj, agentData, neuralContext, store.projectAttachment);
-            store.setNodeResult(nId, result);
-          } catch (err: any) {
-            console.error(`[${nId}] Error:`, err);
+          let resolved = false;
+          while (!resolved) {
+            store.setNodeState(nId, 'running');
+            try {
+              const taskObj = `Project directive: ${store.projectPrompt}\n\nExecute agentic objective for ${agentData.name} within the ${agentData.phaseLabel} architecture phase. Provide deep expert analysis based on the project directive.`;
+              
+              const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT_STUCK')), 45000));
+              const result: any = await Promise.race([
+                callLLM(taskObj, agentData, neuralContext, store.projectAttachment),
+                timeoutPromise
+              ]);
+
+              if (result && result._errorType) {
+                 store.setNodeResult(nId, result);
+                 store.setNodeState(nId, 'stuck_debugger');
+              } else {
+                 store.setNodeResult(nId, result);
+                 store.setNodeState(nId, 'completed');
+                 resolved = true;
+                 break;
+              }
+            } catch (err: any) {
+              console.error(`[${nId}] Error:`, err);
+              store.setNodeState(nId, 'stuck_debugger');
+            }
+
+            if (!resolved) {
+              await new Promise<void>((resolve) => {
+                const checkInterval = setInterval(() => {
+                  const currentState = useWorkflowStore.getState().nodeStates[nId];
+                  if (currentState === 'completed') {
+                    clearInterval(checkInterval);
+                    resolved = true;
+                    resolve();
+                  } else if (currentState === 'running') {
+                    clearInterval(checkInterval);
+                    resolve();
+                  }
+                }, 500);
+              });
+            }
           }
-          store.setNodeState(nId, 'completed');
         }));
 
         if (i < WORKFLOW_PHASES.length - 1) {
@@ -730,150 +809,188 @@ const Engine = () => {
       
       {viewMode === 'templates' && <TemplatesView />}
 
-      {/* ── Floating Neuro-Command (Project Prompt) ── */}
+      {/* ── Expandable Neuro-Command (Project Prompt) ── */}
       {viewMode === 'pipeline' && (
-      <motion.div 
-        initial={{ y: -10, opacity: 0 }} 
-        animate={{ y: [0, -6, 0], opacity: 1 }} 
-        transition={{ y: { duration: 4, repeat: Infinity, ease: 'easeInOut' }, opacity: { duration: 0.8 } }}
-        className="absolute top-[80px] left-1/2 -translate-x-1/2 z-40 w-full max-w-5xl px-8 pointer-events-none"
-      >
-        <div className="flex flex-col items-center gap-2 pointer-events-auto bg-[#0a0a0f]/60 backdrop-blur-3xl border border-white/5 rounded-3xl p-5 shadow-[0_30px_60px_rgba(0,0,0,0.6)]">
-          <div className="flex items-center gap-4 w-full">
-             <div className="flex-1 relative group">
-                <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none text-slate-500 group-focus-within:text-[#46B1FF] transition-colors">
-                  <Activity size={18} />
-                </div>
-                <input
-                  value={projectPrompt}
-                  onChange={(e) => setProjectPrompt(e.target.value)}
-                  placeholder="Orchestrate your objective... (e.g. Design a technical whitepaper for a DeFi protocol)"
-                  className="w-full bg-black/60 border border-white/5 rounded-[18px] py-4 pl-12 pr-6 outline-none focus:border-[#46B1FF]/40 transition-all text-white text-sm shadow-inner placeholder:text-slate-600 font-secondary"
-                  disabled={graphStatus === 'running'}
-                />
-             </div>
-             
-             {/* Action Buttons */}
-             <div className="flex items-center gap-2">
-               <input
-                 ref={fileInputRef}
-                 type="file"
-                 accept=".txt,.md,.json,.pdf"
-                 className="hidden"
-                 title="Upload attachment"
-                 aria-label="Upload attachment"
-                 onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (!file) return;
-                    const reader = new FileReader();
-                    reader.onload = (ev: any) => {
-                      const content = ev.target.result as string;
-                      setProjectAttachment({ name: file.name, content, type: file.type });
-
-                      // Auto-fill the prompt bar from file content
-                      let extractedPrompt = '';
-                      if (file.type === 'application/json' || file.name.endsWith('.json')) {
-                        try {
-                          const json = JSON.parse(content);
-                          extractedPrompt = json.title || json.description || json.prompt || json.name || '';
-                          if (!extractedPrompt && typeof json === 'object') {
-                            extractedPrompt = JSON.stringify(json).substring(0, 200);
-                          }
-                        } catch {
-                          extractedPrompt = content.split('\n').find((l: string) => l.trim().length > 0) || '';
-                        }
-                      } else {
-                        // For .txt, .md — use the first non-empty line as prompt
-                        const lines = content.split('\n').map((l: string) => l.replace(/^#+\s*/, '').trim()).filter((l: string) => l.length > 0);
-                        extractedPrompt = lines[0] || '';
-                      }
-
-                      if (extractedPrompt) {
-                        setProjectPrompt(extractedPrompt.substring(0, 200));
-                      }
-
-                      addToast('success', `File "${file.name}" loaded — prompt auto-filled from content`);
-                    };
-                    reader.readAsText(file);
-                    e.target.value = '';
-                  }}
-               />
-               <button
-                 onClick={() => fileInputRef.current?.click()}
-                 disabled={graphStatus === 'running'}
-                 className="w-14 h-14 rounded-2xl bg-white/[0.03] border border-white/5 text-slate-400 hover:text-[#46B1FF] hover:border-[#46B1FF]/30 transition-all flex items-center justify-center group"
-                 title="Attach context (.txt, .md, .pdf)"
-                 aria-label="Attach context file"
+      <>
+        {/* Toggle Button in Top Right */}
+        <AnimatePresence>
+          {!isCommandExpanded && (
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.8 }}
+              className="absolute top-24 right-8 z-50 cursor-grab active:cursor-grabbing"
+              drag
+              dragMomentum={false}
+              whileDrag={{ scale: 1.1 }}
+            >
+               <motion.button 
+                 onTap={() => setIsCommandExpanded(true)}
+                 className="w-14 h-14 rounded-full bg-[#0a0a0f]/90 backdrop-blur-3xl border border-white/10 shadow-[0_20px_50px_rgba(162,89,255,0.3)] flex items-center justify-center text-white hover:text-[#A259FF] hover:border-white/30 hover:shadow-[0_20px_50px_rgba(162,89,255,0.5)] transition-all group pointer-events-auto"
+                 title="Open Command Center"
                >
-                 <Paperclip size={20} className="group-hover:rotate-12 transition-transform" />
-               </button>
-
-               <button 
-                 onClick={runFullPipeline}
-                 disabled={graphStatus === 'running' || !projectPrompt}
-                 className={`h-14 px-8 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-3 transition-all ${
-                   projectPrompt && graphStatus !== 'running' 
-                     ? 'bg-white text-black hover:bg-[#A259FF] hover:text-white shadow-2xl active:scale-95' 
-                     : 'bg-white/5 text-slate-600 cursor-not-allowed'
-                 }`}
-               >
-                 {graphStatus === 'running' ? (
-                   <><div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" /> Orchestrating...</>
-                 ) : (
-                   <><Play size={18} fill="currentColor" /> Initialize Engine</>
-                 )}
-               </button>
-             </div>
-          </div>
-
-          {/* Key Source Indicator */}
-           <div className="flex items-center gap-4 w-full mt-3 px-1">
-             <div 
-               className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-[10px] font-bold uppercase tracking-wider cursor-pointer transition-all ${
-                 keyInfo.activeSource === 'project' 
-                   ? 'bg-[#A259FF]/10 border-[#A259FF]/30 text-[#A259FF] shadow-[0_0_15px_rgba(162,89,255,0.1)]' 
-                   : keyInfo.activeSource === 'global'
-                     ? 'bg-[#46B1FF]/10 border-[#46B1FF]/30 text-[#46B1FF]'
-                     : 'bg-white/5 border-white/10 text-slate-500'
-               }`}
-               onClick={() => {
-                 setKeyModalType('NO_KEY');
-                 setShowKeyModal(true);
-               }}
-             >
-               <Key size={12} />
-               {keyInfo.activeSource === 'project' 
-                 ? `Project Key (••••${keyInfo.project.lastFour})` 
-                 : keyInfo.activeSource === 'global'
-                   ? `Global Key (••••${keyInfo.global.lastFour})`
-                   : 'No API Key Configured'}
-             </div>
-             
-             <div className="text-[10px] text-slate-600 font-medium">
-               Priority: Project Key &gt; Global Key
-             </div>
-           </div>
-
-           {/* Attachment Chip */}
-          {projectAttachment && (
-            <div className="flex items-center gap-2 w-full mt-3 animate-fade-in">
-              <div className="flex items-center gap-3 bg-[#46B1FF]/10 border-[#46B1FF]/20 text-[#46B1FF] px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider">
-                <Folder size={14} />
-                {projectAttachment.name}
-                <button 
-                  onClick={() => setProjectAttachment(null)}
-                  className="ml-2 hover:text-white transition-colors"
-                  title="Remove attachment"
-                  aria-label="Remove attachment"
-                >
-                  <X size={12} />
-                </button>
-              </div>
-              <span className="text-[9px] text-slate-500 uppercase tracking-widest">Attached — will be included in AI context</span>
-            </div>
+                 <Activity size={24} className="group-hover:scale-110 transition-transform pointer-events-none" />
+               </motion.button>
+            </motion.div>
           )}
-        </div>
-      </motion.div>
+        </AnimatePresence>
+
+        {/* Wide Horizontal Command Bar */}
+        <AnimatePresence>
+          {isCommandExpanded && (
+            <motion.div 
+              initial={{ y: -20, opacity: 0, scale: 0.98 }} 
+              animate={{ y: 0, opacity: 1, scale: 1 }} 
+              exit={{ y: -20, opacity: 0, scale: 0.98 }}
+              transition={{ duration: 0.4, ease: 'circOut' }}
+              className="absolute top-[80px] left-1/2 -translate-x-1/2 z-50 w-full max-w-5xl px-8 pointer-events-none"
+            >
+              <div className="flex flex-col items-center gap-2 pointer-events-auto bg-[#0a0a0f]/80 backdrop-blur-3xl border border-white/10 rounded-3xl p-5 shadow-[0_30px_60px_rgba(0,0,0,0.8)]">
+                <div className="flex items-center gap-4 w-full">
+                   <div className="flex-1 relative group">
+                      <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none text-slate-500 group-focus-within:text-[#46B1FF] transition-colors">
+                        <Activity size={18} />
+                      </div>
+                      <input
+                        value={projectPrompt}
+                        onChange={(e) => setProjectPrompt(e.target.value)}
+                        placeholder="Orchestrate your objective... (e.g. Design a technical whitepaper for a DeFi protocol)"
+                        className="w-full bg-black/60 border border-white/5 rounded-[18px] py-4 pl-12 pr-6 outline-none focus:border-[#46B1FF]/40 transition-all text-white text-sm shadow-inner placeholder:text-slate-600 font-secondary"
+                        disabled={graphStatus === 'running'}
+                      />
+                   </div>
+                   
+                   {/* Action Buttons */}
+                   <div className="flex items-center gap-2">
+                     <input
+                       ref={fileInputRef}
+                       type="file"
+                       accept=".txt,.md,.json,.pdf"
+                       className="hidden"
+                       title="Upload attachment"
+                       aria-label="Upload attachment"
+                       onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          const reader = new FileReader();
+                          reader.onload = (ev: any) => {
+                            const content = ev.target.result as string;
+                            setProjectAttachment({ name: file.name, content, type: file.type });
+
+                            // Auto-fill the prompt bar from file content
+                            let extractedPrompt = '';
+                            if (file.type === 'application/json' || file.name.endsWith('.json')) {
+                              try {
+                                const json = JSON.parse(content);
+                                extractedPrompt = json.title || json.description || json.prompt || json.name || '';
+                                if (!extractedPrompt && typeof json === 'object') {
+                                  extractedPrompt = JSON.stringify(json).substring(0, 200);
+                                }
+                              } catch {
+                                extractedPrompt = content.split('\n').find((l: string) => l.trim().length > 0) || '';
+                              }
+                            } else {
+                              // For .txt, .md — use the first non-empty line as prompt
+                              const lines = content.split('\n').map((l: string) => l.replace(/^#+\s*/, '').trim()).filter((l: string) => l.length > 0);
+                              extractedPrompt = lines[0] || '';
+                            }
+
+                            if (extractedPrompt) {
+                              setProjectPrompt(extractedPrompt.substring(0, 200));
+                            }
+
+                            addToast('success', `File "${file.name}" loaded — prompt auto-filled from content`);
+                          };
+                          reader.readAsText(file);
+                          e.target.value = '';
+                        }}
+                     />
+                     <button
+                       onClick={() => fileInputRef.current?.click()}
+                       disabled={graphStatus === 'running'}
+                       className="w-14 h-14 rounded-2xl bg-white/[0.03] border border-white/5 text-slate-400 hover:text-[#46B1FF] hover:border-[#46B1FF]/30 transition-all flex items-center justify-center group"
+                       title="Attach context (.txt, .md, .pdf)"
+                       aria-label="Attach context file"
+                     >
+                       <Paperclip size={20} className="group-hover:rotate-12 transition-transform" />
+                     </button>
+
+                     <button 
+                       onClick={runFullPipeline}
+                       disabled={graphStatus === 'running' || !projectPrompt}
+                       className={`h-14 px-8 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-3 transition-all ${
+                         projectPrompt && graphStatus !== 'running' 
+                           ? 'bg-white text-black hover:bg-[#A259FF] hover:text-white shadow-[0_0_20px_rgba(255,255,255,0.2)] active:scale-95' 
+                           : 'bg-white/5 text-slate-600 cursor-not-allowed'
+                       }`}
+                     >
+                       {graphStatus === 'running' ? (
+                         <><div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" /> Orchestrating...</>
+                       ) : (
+                         <><Play size={18} fill="currentColor" /> Initialize Engine</>
+                       )}
+                     </button>
+
+                     {/* Close Button */}
+                     <button 
+                       onClick={() => setIsCommandExpanded(false)}
+                       className="w-14 h-14 rounded-2xl bg-white/[0.03] border border-white/5 text-slate-400 hover:text-red-400 hover:bg-red-400/10 transition-all flex items-center justify-center ml-1"
+                       title="Close Command Center"
+                     >
+                       <X size={20} />
+                     </button>
+                   </div>
+                </div>
+
+                {/* Key Source Indicator & Attachment */}
+                 <div className="flex items-center gap-4 w-full mt-3 px-1 justify-between">
+                   <div className="flex items-center gap-4">
+                     <div 
+                       className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-[10px] font-bold uppercase tracking-wider cursor-pointer transition-all ${
+                         keyInfo.activeSource === 'project' 
+                           ? 'bg-[#A259FF]/10 border-[#A259FF]/30 text-[#A259FF] shadow-[0_0_15px_rgba(162,89,255,0.1)]' 
+                           : keyInfo.activeSource === 'global'
+                             ? 'bg-[#46B1FF]/10 border-[#46B1FF]/30 text-[#46B1FF]'
+                             : 'bg-white/5 border-white/10 text-slate-500'
+                       }`}
+                       onClick={() => {
+                         setKeyModalType('NO_KEY');
+                         setShowKeyModal(true);
+                       }}
+                     >
+                       <Key size={12} />
+                       {keyInfo.activeSource === 'project' 
+                         ? `Project Key (••••${keyInfo.project.lastFour})` 
+                         : keyInfo.activeSource === 'global'
+                           ? `Global Key (••••${keyInfo.global.lastFour})`
+                           : 'No API Key Configured'}
+                     </div>
+                     <div className="text-[10px] text-slate-600 font-medium">
+                       Priority: Project Key &gt; Global Key
+                     </div>
+                   </div>
+
+                   {/* Attachment Chip */}
+                  {projectAttachment && (
+                    <div className="flex items-center gap-3 bg-[#46B1FF]/10 border-[#46B1FF]/20 text-[#46B1FF] px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider animate-fade-in">
+                      <Folder size={14} />
+                      {projectAttachment.name}
+                      <button 
+                        onClick={() => setProjectAttachment(null)}
+                        className="ml-2 hover:text-white transition-colors"
+                        title="Remove attachment"
+                        aria-label="Remove attachment"
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
+                  )}
+                 </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </>
       )}
       
       {viewMode === 'pipeline' && <FlowControls setCamera={setCamera} camera={camera} />}

@@ -41,10 +41,10 @@ const FlowHeader = () => {
 
   return (
     <header
-      className="bg-black/40 backdrop-blur-3xl flex items-center justify-between px-8 py-5 z-40 relative border-b border-white/[0.03] shadow-2xl"
+      className="bg-black/40 backdrop-blur-3xl flex items-center px-8 py-5 z-40 relative border-b border-white/[0.03] shadow-2xl"
     >
       {/* Left: Navigation & Logo */}
-      <div className="flex items-center gap-6 flex-shrink-0">
+      <div className="flex items-center gap-6 flex-1 min-w-0">
         
         {/* Return to Hub */}
         <a 
@@ -58,8 +58,8 @@ const FlowHeader = () => {
         </a>
 
         {/* Logo and Title */}
-        <div className="flex items-center gap-6">
-          <div className="flex items-center gap-4 border-r border-white/10 pr-6">
+        <div className="flex items-center gap-6 flex-1 min-w-0">
+          <div className="flex items-center gap-4 border-r border-white/10 pr-6 flex-shrink-0">
             <div className="w-10 h-10 rounded-[14px] flex items-center justify-center shadow-lg logo-gradient-box">
               <img src="/logo.png" alt="Logo" className="w-7 h-7 object-contain" />
             </div>
@@ -70,20 +70,20 @@ const FlowHeader = () => {
             </div>
           </div>
           
-          <div className="flex items-center group">
+          <div className="flex items-center group flex-1 min-w-0 mr-4">
             <input 
               type="text"
               value={useWorkflowStore(state => state.flowTitle) || ''}
               onChange={(e) => useWorkflowStore.getState().setFlowTitle(e.target.value)}
               placeholder="Untitled Flow"
-              className="bg-transparent border-none outline-none text-sm font-medium text-zinc-300 placeholder-zinc-600 focus:text-white transition-colors w-48 focus:w-64"
+              className="bg-transparent border-none outline-none text-sm font-medium text-zinc-300 placeholder-zinc-600 focus:text-white transition-colors w-full min-w-0 text-ellipsis overflow-hidden whitespace-nowrap"
             />
           </div>
         </div>
       </div>
 
       {/* Center: View Toggles */}
-      <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center gap-[4rem] bg-white/[0.02] border border-white/[0.05] py-2 px-8 rounded-3xl shadow-xl backdrop-blur-xl">
+      <div className="flex items-center justify-center gap-[4rem] bg-white/[0.02] border border-white/[0.05] py-2 px-8 rounded-3xl shadow-xl backdrop-blur-xl flex-shrink-0 mx-4">
         <button
           data-tour="pipeline-toggle"
           onClick={() => setViewMode('pipeline')}
@@ -108,7 +108,7 @@ const FlowHeader = () => {
       </div>
 
       {/* Right: Action */}
-      <div className="flex items-center gap-4 flex-shrink-0">
+      <div className="flex items-center justify-end gap-4 flex-1">
         {viewMode === 'builder' && (
           <button 
             onClick={handleInitializeEngine}
