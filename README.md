@@ -1,6 +1,6 @@
 # Agentic Flow Visualization 🧠
 
-**Agentic Flow** is a high-fidelity, interactive web application that provides a stunning visual representation of complex AI agent workflows. Built with a premium dark-theme design philosophy, it features an infinite canvas where modular AI agents (nodes) and their execution paths (edges) are dynamically mapped out over a double-diamond schema. 
+**Agentic Flow** is a high-fidelity, interactive web application that provides a stunning visual representation of complex AI agent workflows. Built with a premium dark-theme design philosophy, it features an infinite canvas where modular AI agents (nodes) and their execution paths (edges) are dynamically mapped out over a double-diamond schema..
 
 ## ✨ Key Features
 - **Infinite Interactive Canvas:** A draggable, zoomable grid viewport powered by custom SVG edge routing.
