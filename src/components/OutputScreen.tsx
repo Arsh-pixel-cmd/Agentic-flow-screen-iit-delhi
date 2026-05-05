@@ -2,47 +2,115 @@ import React, { useRef, useState } from 'react';
 import { X, Download, Copy, FileText, CheckCircle2 } from 'lucide-react';
 import { useWorkflowStore } from '../lib/store';
 import { WORKFLOW_PHASES } from '../data/schema';
+import { callLLM } from '../lib/llm';
 
 interface OutputScreenProps {
   isOpen: boolean;
   onClose: () => void;
+  phaseFilter?: string; // If set, only show results for this phase ID
 }
 
-const OutputScreen = ({ isOpen, onClose }: OutputScreenProps) => {
+const OutputScreen = ({ isOpen, onClose, phaseFilter }: OutputScreenProps) => {
   const contentRef = useRef(null);
   const nodeResults = useWorkflowStore((state: any) => state.nodeResults);
   const projectPrompt = useWorkflowStore((state: any) => state.projectPrompt);
   const [copied, setCopied] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
 
+  // Determine which phases to render
+  const visiblePhases = phaseFilter
+    ? WORKFLOW_PHASES.filter(p => p.id === phaseFilter)
+    : WORKFLOW_PHASES;
+  
+  const phaseTitle = phaseFilter
+    ? (WORKFLOW_PHASES.find(p => p.id === phaseFilter)?.label || phaseFilter) + ' Phase Report'
+    : 'Full Strategic Briefing';
+
   if (!isOpen) return null;
 
   const handleDownloadPDF = async () => {
     setIsDownloading(true);
+    const printWindow = window.open('', '', 'width=800,height=800');
+    if (!printWindow) {
+      alert("Please allow popups to generate the PDF.");
+      setIsDownloading(false);
+      return;
+    }
+
     try {
-      const printWindow = window.open('', '', 'width=800,height=600');
+      // 1. Loading screen in print window to bypass popup blockers
+      printWindow.document.write(`
+        <html><body style="font-family:-apple-system,BlinkMacSystemFont,sans-serif; display:flex; align-items:center; justify-content:center; height:100vh; background:#fafafa; color:#111; text-align:center; flex-direction:column;">
+          <h2 style="font-weight:900; letter-spacing:-0.5px;">Synthesizing Strategic Briefing...</h2>
+          <p style="color:#666; max-width:400px; line-height:1.6;">Our Senior Research Analyst is currently deduplicating outputs, extracting insights, and rendering Mermaid.js architecture diagrams. This may take 15-30 seconds.</p>
+        </body></html>
+      `);
+
+      // 2. Gather raw output (scoped to phaseFilter if set)
+      const rawOutputs = visiblePhases.map(phase => {
+        const phaseNodes = phase.categories.map(c => `${phase.id}::${c}`);
+        const content = phaseNodes.map(nId => nodeResults[nId]?.content).filter(Boolean).join('\\n\\n');
+        return content ? `=== ${phase.label.toUpperCase()} ===\n${content}` : '';
+      }).filter(Boolean).join('\\n\\n---\\n\\n');
+
+      // 3. Synthesis Prompt (scoped)
+      const synthesisPrompt = `
+Act as a Senior Research Analyst. I am providing you with output from a multi-agent pipeline regarding '${projectPrompt || 'the provided topic'}' — specifically the ${phaseTitle}.
+
+Your Task:
+1. Strip the Metadata: Remove all 'System Initialized,' 'Sequence Complete,' and technical log headers.
+2. Deduplicate: Merge repeated definitions into one concise 'Core Concept' section.
+3. Extract Insights: Create a high-fidelity HTML table comparing key findings.
+4. Visual Architecture: Where relevant, convert architecture logs into a clean Mermaid.js sequence diagram. YOU MUST USE EXACTLY THIS FORMAT: <div class="mermaid">sequenceDiagram ...</div>. 
+CRITICAL RULE: DO NOT wrap the mermaid code in markdown ticks. DO NOT use special characters inside Mermaid node names.
+5. Output HTML: You MUST output the entire briefing as clean HTML. Do NOT use markdown \`\`\`html blocks. Just output raw HTML tags.
+
+RAW OUTPUT:
+${rawOutputs}
+      `;
+
+      // 4. Call LLM
+      const agent = { name: 'Senior Research Analyst', role: 'Synthesize data into an Executive Briefing' };
+      const response = await callLLM(synthesisPrompt, agent, '');
+      let synthesizedHtml = response.content || '';
       
+      // Clean up potential markdown formatting (including nested mermaid blocks)
+      synthesizedHtml = synthesizedHtml.replace(/^\`\`\`html/, '');
+      synthesizedHtml = synthesizedHtml.replace(/^\`\`\`/, '');
+      synthesizedHtml = synthesizedHtml.replace(/\`\`\`$/, '');
+      synthesizedHtml = synthesizedHtml.replace(/\`\`\`mermaid\\n?/g, '');
+      synthesizedHtml = synthesizedHtml.replace(/\`\`\`/g, '');
+
+      // 5. Build final printable HTML
       const htmlContent = `
+        <!DOCTYPE html>
         <html>
           <head>
-            <title>Agentic Flow - Output Report</title>
+            <title>Agentic Flow - Strategic Briefing</title>
+            <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+            <script>mermaid.initialize({ startOnLoad: true, theme: 'default' });</script>
             <style>
-              body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 40px; color: #111; line-height: 1.6; max-width: 800px; margin: 0 auto; }
-              h1 { font-size: 28px; font-weight: 900; text-transform: uppercase; margin-bottom: 5px; letter-spacing: -0.5px; }
-              h2 { font-size: 16px; font-weight: 800; text-transform: uppercase; margin-top: 40px; border-bottom: 2px solid #111; padding-bottom: 8px; letter-spacing: 2px; }
-              .meta { font-size: 12px; color: #666; font-family: monospace; margin-bottom: 5px; }
-              .agent-box { border: 1px solid #e2e8f0; border-radius: 8px; margin-top: 15px; padding: 20px; page-break-inside: avoid; background: #fafafa; }
-              .agent-title { font-size: 11px; font-weight: 800; text-transform: uppercase; color: #475569; margin-bottom: 12px; letter-spacing: 1px; display: flex; align-items: center; gap: 8px; }
-              .agent-title::before { content: ""; display: block; width: 6px; height: 6px; border-radius: 50%; background: #A259FF; }
-              pre { white-space: pre-wrap; font-family: inherit; font-size: 13px; color: #1e293b; margin: 0; }
-              @media print { body { padding: 0; } .agent-box { border: 1px solid #ccc; } }
+              @page { size: A4 portrait; margin: 20mm; }
+              * { color: #000 !important; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important; }
+              body { padding: 40px; background: #fff !important; line-height: 1.6; max-width: 900px; margin: 0 auto; }
+              h1 { font-size: 32px; font-weight: 900; text-transform: uppercase; border-bottom: 4px solid #000; padding-bottom: 10px; }
+              h2 { font-size: 20px; font-weight: 800; text-transform: uppercase; margin-top: 40px; }
+              table { width: 100%; border-collapse: collapse; margin-top: 20px; margin-bottom: 30px; font-size: 13px; border: 1px solid #000; }
+              th, td { border: 1px solid #000; padding: 12px; text-align: left; }
+              th { font-weight: bold; text-transform: uppercase; }
+              .mermaid { display: flex; justify-content: center; margin: 40px 0; }
+              .header-meta { font-family: monospace !important; font-size: 12px; margin-bottom: 30px; }
+              @media print { body { padding: 0; } }
             </style>
           </head>
           <body>
-            <h1>Agentic Flow — Output Report</h1>
-            <div class="meta">Directive: ${projectPrompt || 'Untitled Sequence'}</div>
-            <div class="meta">Date: ${new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</div>
+            <div class="header-meta">
+              <strong>REPORT:</strong> Full Pipeline Execution & Strategic Briefing<br>
+              <strong>TOPIC:</strong> ${projectPrompt || 'Pipeline Execution'}<br>
+              <strong>DATE:</strong> ${new Date().toLocaleDateString()}
+            </div>
             
+            <h1>Part 1: Raw Agent Output</h1>
             ${WORKFLOW_PHASES.map((phase, pIdx) => {
               const phaseNodes = phase.categories.map(c => `${phase.id}::${c}`);
               const phaseResults = phaseNodes
@@ -52,41 +120,42 @@ const OutputScreen = ({ isOpen, onClose }: OutputScreenProps) => {
               if (phaseResults.length === 0) return '';
               
               return `
-                <h2>${pIdx + 1}. ${phase.label}</h2>
+                <h2 style="border-bottom: 2px solid #ccc; padding-bottom: 5px; color: #444 !important;">${pIdx + 1}. ${phase.label}</h2>
                 ${phaseResults.map(({ id, result }) => {
                   const agentName = id.split('::')[1]?.replace(/-/g, ' ');
                   return `
-                    <div class="agent-box">
-                      <div class="agent-title">${agentName}</div>
-                      ${result.content ? `<pre>${result.content.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>` : ''}
+                    <div style="border: 1px solid #ddd; border-radius: 8px; margin-top: 15px; padding: 20px; page-break-inside: avoid;">
+                      <div style="font-size: 11px; font-weight: 800; text-transform: uppercase; margin-bottom: 12px;">Agent: ${agentName}</div>
+                      ${result.content ? `<pre style="white-space: pre-wrap; font-family: inherit; font-size: 13px;">${result.content.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>` : ''}
                     </div>
                   `;
                 }).join('')}
               `;
             }).join('')}
+
+            <div style="page-break-before: always;"></div>
+            <h1>Part 2: Executive Strategic Briefing</h1>
+            ${synthesizedHtml}
           </body>
         </html>
       `;
-      if (!printWindow) {
-        alert("Please allow popups to generate the PDF.");
-        setIsDownloading(false);
-        return;
-      }
-      
+
+      printWindow.document.open();
       printWindow.document.write(htmlContent);
       printWindow.document.close();
-      printWindow.focus();
       
+      // Wait for Mermaid to render before printing
       setTimeout(() => {
         printWindow.print();
         printWindow.close();
         setIsDownloading(false);
-      }, 250);
+      }, 2000);
 
     } catch (err) {
       console.error("PDF Generation failed", err);
-      alert("Failed to generate PDF.");
+      alert("Failed to generate synthesized PDF.");
       setIsDownloading(false);
+      if (printWindow) printWindow.close();
     }
   };
 
@@ -129,7 +198,7 @@ const OutputScreen = ({ isOpen, onClose }: OutputScreenProps) => {
               <FileText size={18} className="text-[#DEF767]" />
             </div>
             <div>
-              <h2 className="text-lg font-bold text-white font-display">Pipeline Output Manifest</h2>
+              <h2 className="text-lg font-bold text-white font-display">{phaseTitle}</h2>
               <p className="text-[10px] text-slate-500 font-secondary mt-0.5 tracking-wide uppercase">
                 {totalResults} agent{totalResults !== 1 ? 's' : ''} completed • {projectPrompt?.substring(0, 50)}{projectPrompt?.length > 50 ? '...' : ''}
               </p>
@@ -165,13 +234,13 @@ const OutputScreen = ({ isOpen, onClose }: OutputScreenProps) => {
           <div ref={contentRef} className="p-8 space-y-10" style={{ background: '#0a0a10', color: '#e2e8f0' }}>
             {/* Title Section for PDF */}
             <div className="text-center pb-6 border-b border-white/[0.04]">
-              <h1 className="text-3xl font-black text-white font-display tracking-tight mb-2">Agentic Flow — Output Report</h1>
+              <h1 className="text-3xl font-black text-white font-display tracking-tight mb-2">Agentic Flow — {phaseTitle}</h1>
               <p className="text-sm text-slate-400 font-secondary">{projectPrompt}</p>
               <p className="text-[10px] text-slate-600 mt-2 font-mono">{new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
             </div>
 
-            {/* Phase by Phase Results */}
-            {WORKFLOW_PHASES.map((phase, pIdx) => {
+            {/* Phase by Phase Results — filtered if phaseFilter is set */}
+            {visiblePhases.map((phase, pIdx) => {
               const phaseNodes = phase.categories.map(c => `${phase.id}::${c}`);
               const phaseResults = phaseNodes
                 .map(nId => ({ id: nId, result: nodeResults[nId] }))

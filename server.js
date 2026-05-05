@@ -109,22 +109,26 @@ async function resolveApiKey(userId, sequenceId, fallbackKey) {
       } catch (err) { console.error('[Server] Global key decryption failed:', err.message); }
     }
   }
-  return fallbackKey || '';
+  return fallbackKey || process.env.VITE_OPENROUTER_API_KEY_1 || process.env.VITE_GROQ_API_KEY_1 || process.env.VITE_OPENROUTER_API_KEY_2 || '';
 }
 
 // ── UNIVERSAL GATEWAY PROTOCOL ──────────────────────────────────────
-function determineProvider(key) {
+function determineProvider(key, requestedModel) {
   if (key.startsWith('sk-or-')) {
-    return { url: 'https://openrouter.ai/api/v1/chat/completions', defaultModel: 'openrouter/auto' };
+    return { url: 'https://openrouter.ai/api/v1/chat/completions', defaultModel: requestedModel || 'openrouter/auto' };
   } else if (key.startsWith('sk-ant-')) {
-    return { url: 'https://api.anthropic.com/v1/messages', defaultModel: 'claude-3-haiku-20240307' };
-  } else if (key.startsWith('xai-') || key.startsWith('gsk_')) {
-    return { url: 'https://api.groq.com/openai/v1/chat/completions', defaultModel: 'llama-3.1-70b-versatile' }; 
+    return { url: 'https://api.anthropic.com/v1/messages', defaultModel: requestedModel || 'claude-3-5-sonnet-20240620' };
+  } else if (key.startsWith('gsk_')) {
+    return { url: 'https://api.groq.com/openai/v1/chat/completions', defaultModel: requestedModel || 'llama-3.3-70b-versatile' };
+  } else if (key.startsWith('xai-')) {
+    return { url: 'https://api.x.ai/v1/chat/completions', defaultModel: requestedModel || 'grok-beta' };
+  } else if (key.startsWith('AIzaSy')) {
+    return { url: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', defaultModel: requestedModel || 'gemini-2.0-flash' };
   } else if (key.startsWith('sk-')) {
-    return { url: 'https://api.openai.com/v1/chat/completions', defaultModel: 'gpt-4o-mini' };
+    return { url: 'https://api.openai.com/v1/chat/completions', defaultModel: requestedModel || 'gpt-4o' };
   }
   
-  return { url: 'https://openrouter.ai/api/v1/chat/completions', defaultModel: 'openrouter/auto' }; 
+  return { url: 'https://openrouter.ai/api/v1/chat/completions', defaultModel: requestedModel || 'openrouter/auto' };
 }
 
 // ── KEY MANAGEMENT ENDPOINTS ────────────────────────────────────────
@@ -207,33 +211,99 @@ app.delete('/api/keys/project/:userId/:sequenceId', async (req, res) => {
 
 // Verify a stored key works by making a lightweight test call
 app.post('/api/keys/verify', async (req, res) => {
-  const { userId } = req.body;
-  if (!userId) return res.status(400).json({ error: 'userId is required.' });
+  const { userId, apiKey: explicitKey } = req.body;
+  if (!userId && !explicitKey) return res.status(400).json({ error: 'userId or apiKey is required.' });
 
-  const apiKey = await resolveApiKey(userId, null, null);
+  // Use explicitKey if provided (for pre-save validation), otherwise fetch from DB
+  const apiKey = explicitKey || await resolveApiKey(userId, null, null);
   if (!apiKey) return res.json({ valid: false, reason: 'No key stored.' });
 
-  const { url, defaultModel } = determineProvider(apiKey);
+  const { url, defaultModel } = determineProvider(apiKey, null);
   try {
+    const headers = { 'Content-Type': 'application/json' };
+    if (apiKey.startsWith('sk-ant-')) {
+      headers['x-api-key'] = apiKey;
+      headers['anthropic-version'] = '2023-06-01';
+    } else {
+      headers['Authorization'] = `Bearer ${apiKey}`;
+    }
+
     const response = await fetch(url, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({
         model: defaultModel,
         messages: [{ role: 'user', content: 'ping' }],
         max_tokens: 5,
       }),
     });
-    res.json({ valid: response.ok, statusCode: response.status });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.log('[Verify Error] Status:', response.status, 'Response:', errorText);
+      return res.json({ valid: false, statusCode: response.status, reason: `Provider Error (${response.status}): ${errorText.substring(0, 100)}` });
+    }
+    
+    res.json({ valid: true, statusCode: response.status });
   } catch (err) {
+    console.log('[Verify Exception]', err.message);
     res.json({ valid: false, reason: err.message });
+  }
+});
+
+app.post('/api/models', async (req, res) => {
+  const { userId, apiKey: explicitKey } = req.body;
+  if (!userId && !explicitKey) return res.status(400).json({ error: 'userId or apiKey is required.' });
+
+  const apiKey = explicitKey || await resolveApiKey(userId, null, null);
+  if (!apiKey) return res.json({ models: [] });
+
+  const { url } = determineProvider(apiKey, null);
+  
+  try {
+    if (apiKey.startsWith('sk-ant-')) {
+      return res.json({ models: [
+        { id: 'claude-3-5-sonnet-20240620', name: 'Claude 3.5 Sonnet' },
+        { id: 'claude-3-opus-20240229', name: 'Claude 3 Opus' },
+        { id: 'claude-3-haiku-20240307', name: 'Claude 3 Haiku' }
+      ]});
+    }
+    if (apiKey.startsWith('AIzaSy')) {
+      return res.json({ models: [
+        { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash' },
+        { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro' },
+        { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash' },
+        { id: 'gemini-2.0-pro-exp-02-05', name: 'Gemini 2.0 Pro Experimental' }
+      ]});
+    }
+
+    const modelsUrl = url.replace('/chat/completions', '/models');
+    
+    const response = await fetch(modelsUrl, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' }
+    });
+
+    if (!response.ok) throw new Error(`Provider returned ${response.status}`);
+
+    const data = await response.json();
+    let models = [];
+    if (data && data.data && Array.isArray(data.data)) {
+      models = data.data.map(m => ({ id: m.id, name: m.name || m.id }));
+      models.sort((a, b) => a.id.localeCompare(b.id));
+    }
+
+    res.json({ models });
+  } catch (err) {
+    console.error('[Server] Failed to fetch models:', err.message);
+    res.json({ models: [] });
   }
 });
 
 // ── LLM EXECUTION ENDPOINT ─────────────────────────────────────────
 
 app.post('/api/llm', async (req, res) => {
-  const { userTask, agent, neuralContext, activeKey, userId, sequenceId } = req.body;
+  const { userTask, agent, neuralContext, activeKey, userId, sequenceId, requestedModel } = req.body;
 
   console.log(`[Server] Incoming request for agent: ${agent?.name || 'unknown'}, phase: ${agent?.phaseLabel || 'unknown'}`);
 
@@ -254,7 +324,7 @@ app.post('/api/llm', async (req, res) => {
     });
   }
 
-  const { url, defaultModel } = determineProvider(resolvedKey);
+  const { url, defaultModel } = determineProvider(resolvedKey, requestedModel);
   console.log(`[Server] Routing to provider: ${url} with model: ${defaultModel}`);
 
   // ── NODE EXECUTION & DELIVERY (DOUBLE DIAMOND PROTOCOL) ─────────
@@ -326,18 +396,35 @@ CRITICAL: Return ONLY the raw JSON object. No markdown fences. NO Markdown synta
     if (!response.ok) {
       console.error(`[Server] Provider Error: ${response.status} ${response.statusText}`);
       const errJson = await response.json().catch(() => ({}));
+      const errMessage = errJson.error?.message || errJson.message || response.statusText || '';
       
+      // Classify error type precisely
       let errorType = 'PROVIDER_ERROR';
       if (response.status === 401 || response.status === 403) errorType = 'INVALID_KEY';
       if (response.status === 429) errorType = 'RATE_LIMIT';
 
+      // Token / context-window exceeded — check message content across all providers
+      const tokenKeywords = [
+        'context_length_exceeded', 'context length', 'maximum context',
+        'token limit', 'insufficient_quota', 'quota exceeded',
+        'too many tokens', 'max_tokens', 'string too long', 'input too long'
+      ];
+      const isTokenError = response.status === 413 ||
+        tokenKeywords.some(kw => errMessage.toLowerCase().includes(kw));
+      if (isTokenError) errorType = 'TOKEN_LIMIT';
+
+      console.log(`[Server] Error classified as: ${errorType} | Message: ${errMessage.substring(0, 80)}`);
+
       return res.status(response.status).json({
         _errorType: errorType,
-        _keyError: true,
-        content: `Upstream Provider Error (${response.status}): ${errJson.error?.message || response.statusText}`,
+        _keyError: errorType !== 'TOKEN_LIMIT', // Only key-errors open the key modal
+        _tokenError: errorType === 'TOKEN_LIMIT',
+        _model: defaultModel,
+        _provider: url.includes('groq') ? 'Groq' : url.includes('openrouter') ? 'OpenRouter' : url.includes('anthropic') ? 'Anthropic' : url.includes('googleapis') ? 'Google' : 'OpenAI',
+        content: `Upstream Provider Error (${response.status}): ${errMessage}`,
         ui: `<div style="padding:24px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.2);border-radius:16px;color:#ef4444">
-               <h4 style="margin:0 0 8px 0">Execution Halted</h4>
-               <p style="margin:0;font-size:13px;opacity:0.8">${errJson.error?.message || 'The upstream model provider returned an error.'}</p>
+               <h4 style="margin:0 0 8px 0">Execution Halted — ${errorType.replace('_', ' ')}</h4>
+               <p style="margin:0;font-size:13px;opacity:0.8">${errMessage || 'The upstream model provider returned an error.'}</p>
              </div>`
       });
     }
@@ -419,7 +506,7 @@ CRITICAL: Return ONLY the raw JSON object. No markdown fences. NO Markdown synta
 });
 
 app.post('/api/agent/stream', async (req, res) => {
-  const { userTask, agent, activeKey, userId } = req.body;
+  const { userTask, agent, activeKey, userId, requestedModel } = req.body;
 
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
@@ -434,7 +521,7 @@ app.post('/api/agent/stream', async (req, res) => {
     return res.end();
   }
 
-  const { url, defaultModel } = determineProvider(resolvedKey);
+  const { url, defaultModel } = determineProvider(resolvedKey, requestedModel);
   const systemPrompt = `You are a sub-processor computing the neural logic for: ${agent?.name}. Output a rapid chain-of-thought (3-4 technical sentences simulating log processing) detailing how you are evaluating this prompt. Provide raw streamable text with no formatting.`;
 
   try {

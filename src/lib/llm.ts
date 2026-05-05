@@ -98,49 +98,83 @@ export async function callLLM(userTask: any, agent: any, neuralContext: any = ''
   }
 
   const API_URL = `${API_BASE}/api/llm`;
+  const maxRetries = 3;
+  let attempt = 0;
 
-  try {
-    const sequenceId = localStorage.getItem('active_sequence_id');
-    const response = await fetch(API_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        userTask: enrichedTask,
-        agent,
-        neuralContext,
-        userId, 
-        sequenceId, // Added for project-scoped key resolution
-      }),
-    });
+  while (attempt <= maxRetries) {
+    try {
+      const sequenceId = localStorage.getItem('active_sequence_id');
+      const requestedModel = localStorage.getItem('agentic_model') || undefined;
+      
+      const response = await fetch(API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userTask: enrichedTask,
+          agent,
+          neuralContext,
+          userId, 
+          sequenceId,
+          requestedModel,
+        }),
+      });
 
-    if (!response.ok) {
-      const errorPayload = await response.json().catch(() => null);
+      if (!response.ok) {
+        // Retry on Rate Limit or Server Overload
+        if ((response.status === 429 || response.status === 503 || response.status === 502) && attempt < maxRetries) {
+          attempt++;
+          const delay = Math.pow(2, attempt) * 1000;
+          console.warn(`[Frontend] Provider overload or rate limit (Attempt ${attempt}/${maxRetries}). Retrying in ${delay}ms...`);
+          await new Promise(r => setTimeout(r, delay));
+          continue;
+        }
 
-      // If the server reports a key error, dispatch a global event with type classification
-      if (errorPayload?._keyError) {
-        window.dispatchEvent(new CustomEvent('agentic:key-error', {
-          detail: { 
-            type: errorPayload._errorType || 'INVALID_KEY',
-            message: errorPayload.content 
-          },
-        }));
+        const errorPayload = await response.json().catch(() => null);
+
+        // If the server reports a key error, dispatch a global event with type classification
+        if (errorPayload?._keyError) {
+          window.dispatchEvent(new CustomEvent('agentic:key-error', {
+            detail: { 
+              type: errorPayload._errorType || 'INVALID_KEY',
+              message: errorPayload.content 
+            },
+          }));
+        }
+
+        // If the server reports a token / context-limit error, dispatch a dedicated event
+        if (errorPayload?._tokenError) {
+          window.dispatchEvent(new CustomEvent('agentic:token-limit', {
+            detail: {
+              model: errorPayload._model || 'Unknown Model',
+              provider: errorPayload._provider || 'Unknown Provider',
+              message: errorPayload.content || 'The model context window was exceeded.',
+            },
+          }));
+        }
+
+        if (errorPayload && errorPayload.ui) return errorPayload;
+        throw new Error(`Node Server returned status ${response.status}`);
       }
 
-      if (errorPayload && errorPayload.ui) return errorPayload;
-      throw new Error(`Node Server returned status ${response.status}`);
+      return await response.json();
+    } catch (err: any) {
+      if (attempt < maxRetries && err.message.includes('fetch')) {
+        attempt++;
+        const delay = Math.pow(2, attempt) * 1000;
+        console.warn(`[Frontend] Network error (Attempt ${attempt}/${maxRetries}). Retrying in ${delay}ms...`);
+        await new Promise(r => setTimeout(r, delay));
+        continue;
+      }
+      console.error('[Frontend] Failed to communicate with backend:', err);
+      return {
+        content: `Error reaching backend: ${err.message}`,
+        ui: `<div style="padding:32px;font-family:Outfit,sans-serif;background:rgba(10,10,15,0.9);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-radius:24px;border:1px solid rgba(239,68,68,0.25)">
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+              <h3 style="color:#ef4444;font-size:20px;font-weight:700;margin:0;font-family:Syne,sans-serif">Frontend/Backend Conductor Error</h3>
+            </div>
+            <p style="color:#8b949e;font-size:14px;line-height:1.6;margin:0 0 16px 0">Make sure your Node.js server (npm run dev:server) is running on port 3001.</p>
+          </div>`
+      };
     }
-
-    return await response.json();
-  } catch (err: any) {
-    console.error('[Frontend] Failed to communicate with backend:', err);
-    return {
-      content: `Error reaching backend: ${err.message}`,
-      ui: `<div style="padding:32px;font-family:Outfit,sans-serif;background:rgba(10,10,15,0.9);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-radius:24px;border:1px solid rgba(239,68,68,0.25)">
-          <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
-            <h3 style="color:#ef4444;font-size:20px;font-weight:700;margin:0;font-family:Syne,sans-serif">Frontend/Backend Conductor Error</h3>
-          </div>
-          <p style="color:#8b949e;font-size:14px;line-height:1.6;margin:0 0 16px 0">Make sure your Node.js server (npm run dev:server) is running on port 3001.</p>
-        </div>`
-    };
   }
 }

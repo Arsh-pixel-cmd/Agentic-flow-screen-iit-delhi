@@ -9,6 +9,10 @@ const FlowHeader = () => {
   const [isDeploying, setIsDeploying] = useState(false);
 
   const handleInitializeEngine = async () => {
+    if (blocks.length === 0) {
+      alert('Add at least one agent block before compiling.');
+      return;
+    }
     setIsDeploying(true);
     
     // Zoom out canvas elements visually
@@ -21,13 +25,10 @@ const FlowHeader = () => {
     transitionOverlay.innerHTML = `<h1 class="text-4xl font-display font-black text-white mix-blend-overlay tracking-widest uppercase shadow-black drop-shadow-xl animate-pulse">Compiling Neural Path...</h1>`;
     document.body.appendChild(transitionOverlay);
 
-    // Save configuration
+    // Save configuration — MUST await before switching view
     const templateName = blocks.length > 0 ? blocks[0].name : "Custom Builder Flow";
-    useBuilderStore.getState().deployProject(templateName);
+    const deployedId = await useBuilderStore.getState().deployProject(templateName);
 
-    // Simulate compilation network propagation
-    await new Promise(r => setTimeout(r, 2500));
-    
     // Remove Overlay
     document.body.removeChild(transitionOverlay);
     setIsDeploying(false);
@@ -35,7 +36,12 @@ const FlowHeader = () => {
     // Clear styles
     if (canvasRef) canvasRef.classList.remove('scale-75', 'opacity-0');
     
-    // Redirect to pipeline natively
+    if (!deployedId) {
+      alert('Compilation failed. Please try again or add blocks first.');
+      return;
+    }
+
+    // Only switch after store has deployedTemplateId confirmed
     setViewMode('pipeline');
   };
 

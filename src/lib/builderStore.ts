@@ -33,11 +33,12 @@ export interface BuilderStore {
   clearAnnotations: () => void;
   deployedTemplateId: string | null;
   setTemplates: (templates: any[]) => void;
-  deployProject: (name?: string) => Promise<void>;
+  deployProject: (name?: string) => Promise<string | null>;
   saveAsTemplate: (name?: string) => Promise<void>;
   applyTemplate: (templateId: string) => Promise<void>;
   updateTemplate: (id: string, updates: any) => Promise<void>;
   deleteTemplate: (id: string) => Promise<void>;
+  saveBuilderState: () => Promise<void>;
 }
 
 export const useBuilderStore = create<BuilderStore>((set, get) => ({
@@ -202,42 +203,89 @@ export const useBuilderStore = create<BuilderStore>((set, get) => ({
 
   clearAnnotations: () => set({ stickyNotes: [] }),
 
+  // ---- SAVE BUILDER STATE TO SEQUENCES ----
+  // Persists blocks, connections, stickies to the active sequence record
+  saveBuilderState: async () => {
+    const seqId = localStorage.getItem('active_sequence_id');
+    if (!seqId) return;
+    const state = get();
+    const canvas_state = {
+      blocks: JSON.parse(JSON.stringify(state.blocks)),
+      connections: JSON.parse(JSON.stringify(state.connections)),
+      stickyNotes: JSON.parse(JSON.stringify(state.stickyNotes)),
+      textLabels: JSON.parse(JSON.stringify(state.textLabels)),
+    };
+    await supabase.from('sequences').update({ canvas_state, updated_at: new Date().toISOString() }).eq('id', seqId);
+  },
+
   // --- TEMPLATES & PIPELINE DEPLOYMENT ---
   deployedTemplateId: null,
 
   setTemplates: (templates: any) => set({ templates }),
 
-  deployProject: async (name: any) => {
+  deployProject: async (name: any): Promise<string | null> => {
+    const state = get();
+    const blocksSnap = JSON.parse(JSON.stringify(state.blocks));
+    const connsSnap = JSON.parse(JSON.stringify(state.connections));
+
+    if (blocksSnap.length === 0) return null;
+
+    // 1. Build the template payload
+    const templatePayload: any = {
+      name: name || 'Untitled Pipeline',
+      blocks: blocksSnap,
+      connections: connsSnap,
+      is_template: true,
+      status: 'active',
+      generated_from: 'builder',
+    };
+
+    // 2. Try to save to Supabase (requires auth)
+    try {
       const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return alert("Must be logged in to deploy!");
-
-      const state = get();
-      const newTemplate = {
-          user_id: session.user.id,
-          name: name || 'Untitled Template',
-          blocks: JSON.parse(JSON.stringify(state.blocks)),
-          connections: JSON.parse(JSON.stringify(state.connections)),
-          is_template: true,
-          status: 'active',
-          generated_from: 'builder'
-      };
-
-      try {
+      if (session) {
+        templatePayload.user_id = session.user.id;
         const { data, error } = await supabase
           .from('templates')
-          .insert([newTemplate])
+          .insert([templatePayload])
           .select()
           .single();
 
         if (error) throw error;
-        
-        set((state) => ({
-            templates: [...state.templates, data],
-            deployedTemplateId: data.id
+
+        // Also update the active sequence's canvas_state so it persists
+        const seqId = localStorage.getItem('active_sequence_id');
+        if (seqId) {
+          await supabase.from('sequences').update({
+            canvas_state: {
+              blocks: blocksSnap,
+              connections: connsSnap,
+              stickyNotes: JSON.parse(JSON.stringify(state.stickyNotes)),
+              textLabels: JSON.parse(JSON.stringify(state.textLabels)),
+              deployedTemplateId: data.id,
+            },
+            updated_at: new Date().toISOString()
+          }).eq('id', seqId);
+        }
+
+        set((s) => ({
+          templates: [...s.templates, data],
+          deployedTemplateId: data.id
         }));
-      } catch (err) {
-        console.error("Failed to deploy template", err);
+        return data.id;
       }
+    } catch (err) {
+      console.warn('[Builder] Supabase template save failed, using local fallback:', err);
+    }
+
+    // 3. Local memory fallback — still works even without auth
+    const localId = generateId();
+    const localTemplate = { ...templatePayload, id: localId, user_id: 'local' };
+    set((s) => ({
+      templates: [...s.templates, localTemplate],
+      deployedTemplateId: localId
+    }));
+    return localId;
   },
 
   saveAsTemplate: async (name: any) => {

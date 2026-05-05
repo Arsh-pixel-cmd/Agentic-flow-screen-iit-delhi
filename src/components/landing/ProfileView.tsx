@@ -36,6 +36,9 @@ export const ProfileView = ({ user: propUser, onLogout }: ProfileViewProps) => {
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [saveMessage, setSaveMessage] = useState<SaveMessage | null>(null);
+  const [modelInput, setModelInput] = useState(localStorage.getItem('agentic_model') || '');
+  const [availableModels, setAvailableModels] = useState<{id: string, name: string}[]>([]);
+  const [isLoadingModels, setIsLoadingModels] = useState(false);
 
   // ── Fetch user profile and stats ──────────────────────────
   useEffect(() => {
@@ -80,6 +83,29 @@ export const ProfileView = ({ user: propUser, onLogout }: ProfileViewProps) => {
     fetchKeyStatus();
   }, [fetchKeyStatus]);
 
+  // ── Fetch Available Models ────────────────────────────────
+  const fetchAvailableModels = useCallback(async (explicitKey?: string) => {
+    if (!authUser && !explicitKey) return;
+    setIsLoadingModels(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/models`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: authUser?.id, apiKey: explicitKey }),
+      });
+      const data = await res.json();
+      setAvailableModels(data.models || []);
+    } catch {
+      setAvailableModels([]);
+    } finally {
+      setIsLoadingModels(false);
+    }
+  }, [authUser]);
+
+  useEffect(() => {
+    if (hasKey && !isEditing) fetchAvailableModels();
+  }, [hasKey, isEditing, fetchAvailableModels]);
+
   // ── Listen for global key error events ────────────────────
   useEffect(() => {
     const handler = () => {
@@ -96,6 +122,21 @@ export const ProfileView = ({ user: propUser, onLogout }: ProfileViewProps) => {
     setSaveMessage(null);
 
     try {
+      // 1. Verify the key with the provider first
+      const verifyRes = await fetch(`${API_BASE}/api/keys/verify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: authUser.id, apiKey: keyInput.trim() }),
+      });
+      const verifyData = await verifyRes.json();
+      
+      if (!verifyData.valid) {
+        setSaveMessage({ type: 'error', text: verifyData.reason || 'Invalid API Key. Provider rejected it.' });
+        setIsSaving(false);
+        return;
+      }
+
+      // 2. If valid, encrypt and save it
       const res = await fetch(`${API_BASE}/api/keys/save`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -111,6 +152,7 @@ export const ProfileView = ({ user: propUser, onLogout }: ProfileViewProps) => {
         setSaveMessage({ type: 'success', text: 'API key encrypted and saved securely.' });
         setTimeout(() => setSaveMessage(null), 4000);
         await fetchKeyStatus();
+        await fetchAvailableModels(keyInput.trim());
       } else {
         setSaveMessage({ type: 'error', text: data.error || 'Failed to save key.' });
       }
@@ -248,15 +290,18 @@ export const ProfileView = ({ user: propUser, onLogout }: ProfileViewProps) => {
                 </div>
               ) : (
                 /* ── No key or editing: show input ── */
-                <div className="space-y-4">
+                <form 
+                  className="space-y-4"
+                  onSubmit={(e) => { e.preventDefault(); handleSaveKey(); }}
+                >
                   <div className="relative">
                     <input
                       type={showKey ? 'text' : 'password'}
+                      autoComplete="off"
                       value={keyInput}
                       onChange={(e) => setKeyInput(e.target.value)}
                       placeholder="Enter your API key (e.g., sk-or-v1-...)"
                       className="w-full bg-[#111] border border-white/10 rounded-xl px-4 py-3.5 pr-12 text-sm text-zinc-200 font-mono outline-none focus:border-[#A259FF]/50 transition-all placeholder:text-zinc-600"
-                      onKeyDown={(e) => e.key === 'Enter' && handleSaveKey()}
                     />
                     <button
                       type="button"
@@ -269,7 +314,7 @@ export const ProfileView = ({ user: propUser, onLogout }: ProfileViewProps) => {
 
                   <div className="flex items-center gap-3">
                     <button
-                      onClick={handleSaveKey}
+                      type="submit"
                       disabled={!keyInput.trim() || isSaving}
                       className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#A259FF] text-white text-xs font-bold uppercase tracking-widest hover:bg-[#8B3FE0] transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-lg shadow-[#A259FF]/20"
                     >
@@ -278,6 +323,7 @@ export const ProfileView = ({ user: propUser, onLogout }: ProfileViewProps) => {
                     </button>
                     {isEditing && (
                       <button
+                        type="button"
                         onClick={() => { setIsEditing(false); setKeyInput(''); }}
                         className="px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-zinc-400 text-xs font-bold uppercase tracking-widest hover:text-white hover:bg-white/10 transition-all"
                       >
@@ -285,7 +331,7 @@ export const ProfileView = ({ user: propUser, onLogout }: ProfileViewProps) => {
                       </button>
                     )}
                   </div>
-                </div>
+                </form>
               )}
 
               {/* Status Messages */}
@@ -312,6 +358,8 @@ export const ProfileView = ({ user: propUser, onLogout }: ProfileViewProps) => {
                 </p>
               </div>
             </div>
+
+
 
             {/* Active Workflows Card */}
             <div className="bg-[#111] border border-white/5 rounded-3xl p-8 shadow-inner">

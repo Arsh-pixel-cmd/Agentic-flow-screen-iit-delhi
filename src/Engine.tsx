@@ -83,6 +83,14 @@ const Engine = () => {
   const [keyInfo, setKeyInfo] = useState<any>({ activeSource: 'none', project: { hasKey: false }, global: { any: false } });
   const addToast = useToastStore((state) => state.addToast);
 
+  // Token Limit Modal State
+  const [tokenLimitModal, setTokenLimitModal] = useState<{ show: boolean; model: string; provider: string; message: string } | null>(null);
+
+  // Phase-gated execution state
+  const [completedPhases, setCompletedPhases] = useState<string[]>([]);
+  const [runningPhaseId, setRunningPhaseId] = useState<string | null>(null);
+  const [phaseOutputModal, setPhaseOutputModal] = useState<string | null>(null); // phaseId to download
+
   // Boot validation
   useEffect(() => {
     const loadCanvasData = async () => {
@@ -124,17 +132,22 @@ const Engine = () => {
              
              // Initialize flowTitle
              useWorkflowStore.setState({ flowTitle: data.title || 'Untitled Flow' });
-          }
-          
-          // Fetch templates for the user
-          const { data: { session } } = await supabase.auth.getSession();
-          if (session) {
-             const { data: templates } = await supabase.from('templates').select('*').eq('user_id', session.user.id).order('created_at', { ascending: false });
-             if (templates) {
+             
+             // Fetch templates for the user and restore deployedTemplateId
+             const { data: { session } } = await supabase.auth.getSession();
+             if (session) {
+               const { data: templates } = await supabase.from('templates').select('*').eq('user_id', session.user.id).order('created_at', { ascending: false });
+               if (templates) {
                  useBuilderStore.setState({ templates });
+               }
              }
-          }
-        }
+             
+             // Restore the deployed template ID if it was saved in canvas_state
+             if (state.deployedTemplateId) {
+               useBuilderStore.setState({ deployedTemplateId: state.deployedTemplateId });
+             }
+          } // end if data?.canvas_state
+        } // end if seqId
         validateGraph();
         setGraphStatus('ready');
       } catch (e: any) {
@@ -156,7 +169,14 @@ const Engine = () => {
       }
     };
 
+    // Listen for token / context-limit errors
+    const handleTokenLimit = (e: any) => {
+      const { model, provider, message } = e.detail;
+      setTokenLimitModal({ show: true, model, provider, message });
+    };
+
     window.addEventListener('agentic:key-error', handleKeyError);
+    window.addEventListener('agentic:token-limit', handleTokenLimit);
 
     // Initial key check
     const seqId = localStorage.getItem('active_sequence_id');
@@ -164,7 +184,10 @@ const Engine = () => {
       checkKeyAvailability(seqId).then(setKeyInfo);
     }
 
-    return () => window.removeEventListener('agentic:key-error', handleKeyError);
+    return () => {
+      window.removeEventListener('agentic:key-error', handleKeyError);
+      window.removeEventListener('agentic:token-limit', handleTokenLimit);
+    };
   }, [setGraphStatus, addToast]);
 
   // --- AUTO-SAVE BACKGROUND ENGINE ---
@@ -190,6 +213,7 @@ const Engine = () => {
         connections: state.connections,
         stickyNotes: state.stickyNotes,
         textLabels: state.textLabels,
+        deployedTemplateId: state.deployedTemplateId || null,
         execution: {
           nodeStates: workflowState.nodeStates,
           nodeResults: workflowState.nodeResults,
@@ -232,7 +256,21 @@ const Engine = () => {
   const layout = useMemo(() => {
     if (graphStatus === 'error') return null;
     if (deployedTemplateId && viewMode === 'pipeline') {
-       const activeTemplate = templates.find((t: any) => t.id === deployedTemplateId);
+       // First try to find in the loaded templates array
+       let activeTemplate = templates.find((t: any) => t.id === deployedTemplateId);
+       
+       // Fallback: If not in templates array yet (e.g. local deploy), build from builderStore blocks directly
+       if (!activeTemplate) {
+         const builderState = useBuilderStore.getState();
+         if (builderState.blocks.length > 0) {
+           activeTemplate = {
+             id: deployedTemplateId,
+             blocks: builderState.blocks,
+             connections: builderState.connections,
+           };
+         }
+       }
+       
        if (activeTemplate) {
            const depths: Record<string, number> = {};
            const adj: Record<string, any[]> = {};
@@ -539,8 +577,11 @@ const Engine = () => {
       const maxDepth = Math.max(0, ...Object.values(depths));
       const phaseLabels = WORKFLOW_PHASES.map(p => p.label);
       
+      setCompletedPhases([]);
       for (let d = 0; d <= maxDepth; d++) {
         const phaseIndex = Math.min(d, WORKFLOW_PHASES.length - 1);
+        const currentPhaseObj = WORKFLOW_PHASES[phaseIndex];
+        if (currentPhaseObj) setRunningPhaseId(currentPhaseObj.id);
         store.setCurrentPhaseIndex(phaseIndex);
         
         const nodesAtDepth = activeTemplate.blocks.filter((b: any) => (depths[b.id] || 0) === d).map((b: any) => b.id);
@@ -557,7 +598,10 @@ const Engine = () => {
             .join('\n\n---\n\n');
         }
         
-        await Promise.all(nodesAtDepth.map(async (nId: any) => {
+        const CONCURRENCY_LIMIT = 3;
+        for (let batchIdx = 0; batchIdx < nodesAtDepth.length; batchIdx += CONCURRENCY_LIMIT) {
+          const batch = nodesAtDepth.slice(batchIdx, batchIdx + CONCURRENCY_LIMIT);
+          await Promise.all(batch.map(async (nId: any) => {
           const nodeInfo = (layout as any)[nId];
           const agentData = {
             id: nId,
@@ -608,7 +652,13 @@ const Engine = () => {
               });
             }
           }
-        }));
+          }));
+        }
+
+        if (currentPhaseObj) {
+          setCompletedPhases(prev => [...prev.filter(id => id !== currentPhaseObj.id), currentPhaseObj.id]);
+        }
+        setRunningPhaseId(null);
 
         if (d < maxDepth) {
           const nextPhaseIndex = Math.min(d + 1, WORKFLOW_PHASES.length - 1);
@@ -623,8 +673,10 @@ const Engine = () => {
       }
     } else {
       // --- DEFAULT SCHEMA EXECUTION (original logic) ---
+      setCompletedPhases([]);
       for (let i = 0; i < WORKFLOW_PHASES.length; i++) {
         const phase = WORKFLOW_PHASES[i]!;
+        setRunningPhaseId(phase.id);
         store.setCurrentPhaseIndex(i);
         
         const phaseNodes = phase.categories.map((c: any) => `${phase.id}::${c}`);
@@ -642,7 +694,10 @@ const Engine = () => {
             .join('\n\n---\n\n');
         }
 
-        await Promise.all(phaseNodes.map(async (nId: any) => {
+        const CONCURRENCY_LIMIT = 3;
+        for (let batchIdx = 0; batchIdx < phaseNodes.length; batchIdx += CONCURRENCY_LIMIT) {
+          const batch = phaseNodes.slice(batchIdx, batchIdx + CONCURRENCY_LIMIT);
+          await Promise.all(batch.map(async (nId: any) => {
           const nodeCategory = nId.split('::')[1];
           const agentData = {
             id: nId,
@@ -693,7 +748,11 @@ const Engine = () => {
               });
             }
           }
-        }));
+          }));
+        }
+
+        setCompletedPhases(prev => [...prev.filter(id => id !== phase.id), phase.id]);
+        setRunningPhaseId(null);
 
         if (i < WORKFLOW_PHASES.length - 1) {
           setPhaseOverlay({ 
@@ -719,6 +778,141 @@ const Engine = () => {
     
     setTimeout(() => setShowOutputScreen(true), 2500);
   }, [layout, graphStatus, projectPrompt, deployedTemplateId, templates]);
+
+  // ── PHASE-GATED EXECUTION ─────────────────────────────────────
+  const runPhase = useCallback(async (phaseId: string) => {
+    if (!layout || runningPhaseId) return;
+    const store = useWorkflowStore.getState();
+
+    if (!projectPrompt || projectPrompt.trim() === '') {
+      addToast('info', 'Please enter a project directive first.');
+      return;
+    }
+
+    // Gate check — previous phase must be complete
+    const phaseIndex = WORKFLOW_PHASES.findIndex(p => p.id === phaseId);
+    if (phaseIndex > 0) {
+      const prevPhase = WORKFLOW_PHASES[phaseIndex - 1]!;
+      if (!completedPhases.includes(prevPhase.id)) {
+        addToast('warning', `Complete ${prevPhase.label} first before running ${WORKFLOW_PHASES[phaseIndex]!.label}.`);
+        return;
+      }
+    }
+
+    // API key check
+    const seqId = localStorage.getItem('active_sequence_id');
+    if (seqId) {
+      const status = await checkKeyAvailability(seqId);
+      setKeyInfo(status);
+      if (!status.any) {
+        setKeyModalType('NO_KEY');
+        setShowKeyModal(true);
+        return;
+      }
+    }
+
+    setRunningPhaseId(phaseId);
+    store.setGraphStatus('running');
+
+    const phase = WORKFLOW_PHASES[phaseIndex]!;
+    const phaseNodes = phase.categories.map((c: any) => `${phase.id}::${c}`);
+
+    // Build neural context from the previous phase's completed results
+    let neuralContext = '';
+    if (phaseIndex > 0) {
+      const prevPhase = WORKFLOW_PHASES[phaseIndex - 1]!;
+      const prevNodes = prevPhase.categories.map((c: any) => `${prevPhase.id}::${c}`);
+      neuralContext = prevNodes
+        .map((id: any) => store.nodeResults[id]?.content)
+        .filter(Boolean)
+        .join('\n\n---\n\n');
+      if (neuralContext) {
+        neuralContext = `PHASE CONTEXT FROM [${prevPhase.label.toUpperCase()}]:\n${neuralContext.substring(0, 6000)}`;
+      }
+    }
+
+    // Mark all phase nodes as idle first
+    phaseNodes.forEach((nId: string) => store.setNodeState(nId, 'idle'));
+    store.setCurrentPhaseIndex(phaseIndex);
+    store.setAnimationState({ activeNodes: phaseNodes });
+
+    // Execute nodes in batches of 3
+    const CONCURRENCY_LIMIT = 3;
+    for (let batchIdx = 0; batchIdx < phaseNodes.length; batchIdx += CONCURRENCY_LIMIT) {
+      const batch = phaseNodes.slice(batchIdx, batchIdx + CONCURRENCY_LIMIT);
+      await Promise.all(batch.map(async (nId: string) => {
+        const agentData = {
+          id: nId,
+          phaseLabel: phase.label,
+          categoryName: nId.split('::')[1],
+          name: (layout as any)[nId]?.category?.name || nId.split('::')[1]
+        };
+
+        let resolved = false;
+        while (!resolved) {
+          store.setNodeState(nId, 'running');
+          try {
+            const taskObj = `Project directive: ${store.projectPrompt}\n\nExecute agentic objective for ${agentData.name} within the ${agentData.phaseLabel} phase. Provide deep expert analysis.`;
+            const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT_STUCK')), 45000));
+            const result: any = await Promise.race([
+              callLLM(taskObj, agentData, neuralContext, store.projectAttachment),
+              timeoutPromise
+            ]);
+
+            if (result?._errorType) {
+              store.setNodeResult(nId, result);
+              store.setNodeState(nId, 'stuck_debugger');
+            } else {
+              store.setNodeResult(nId, result);
+              store.setNodeState(nId, 'completed');
+              resolved = true;
+            }
+          } catch (err: any) {
+            console.error(`[${nId}] Error:`, err);
+            store.setNodeState(nId, 'stuck_debugger');
+          }
+
+          if (!resolved) {
+            await new Promise<void>((resolve) => {
+              const checkInterval = setInterval(() => {
+                const currentState = useWorkflowStore.getState().nodeStates[nId];
+                if (currentState === 'completed') {
+                  clearInterval(checkInterval);
+                  resolved = true;
+                  resolve();
+                } else if (currentState === 'running') {
+                  clearInterval(checkInterval);
+                  resolve();
+                }
+              }, 500);
+            });
+          }
+        }
+      }));
+    }
+
+    // Phase complete
+    setCompletedPhases(prev => [...prev.filter(id => id !== phaseId), phaseId]);
+    setRunningPhaseId(null);
+
+    const allDone = WORKFLOW_PHASES.every((p, idx) =>
+      idx <= phaseIndex ? true : completedPhases.includes(p.id)
+    );
+
+    if (phaseIndex === WORKFLOW_PHASES.length - 1 || allDone) {
+      store.setGraphStatus('completed');
+      const end = Date.now() + 2000;
+      (function frame() {
+        confetti({ particleCount: 8, angle: 60, spread: 70, origin: { x: 0 }, colors: ['#46B1FF', '#CEA3FF', '#DEF767'] });
+        confetti({ particleCount: 8, angle: 120, spread: 70, origin: { x: 1 }, colors: ['#A259FF', '#DEF767', '#ffffff'] });
+        if (Date.now() < end) requestAnimationFrame(frame);
+      }());
+    } else {
+      store.setGraphStatus('ready');
+    }
+
+    addToast('success', `${phase.label} phase complete! Download the report or run the next phase.`);
+  }, [layout, projectPrompt, completedPhases, runningPhaseId, deployedTemplateId, templates]);
 
   const rebootSequence = () => {
     const store = useWorkflowStore.getState();
@@ -781,7 +975,15 @@ const Engine = () => {
   }
 
   if (!layout) {
-    return <div className="h-screen w-screen bg-[#0a0a10]" />;
+    return (
+      <div className="h-screen w-screen bg-[#0a0a10] flex flex-col items-center justify-center gap-6">
+        <div className="w-12 h-12 border-4 border-[#A259FF] border-t-transparent rounded-full animate-spin" />
+        <div className="text-center">
+          <p className="text-sm font-black uppercase tracking-[0.25em] text-[#A259FF] mb-1">Initializing Canvas</p>
+          <p className="text-[11px] text-slate-600 tracking-widest">Loading neural pipeline...</p>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -806,6 +1008,78 @@ const Engine = () => {
           </div>
         </div>
       )}
+
+      {/* ── Token Limit Exceeded Modal ── */}
+      <AnimatePresence>
+        {tokenLimitModal?.show && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-md"
+          >
+            <motion.div
+              initial={{ scale: 0.85, opacity: 0, y: 30 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 20 }}
+              transition={{ type: 'spring', damping: 22, stiffness: 300 }}
+              className="relative w-[480px] max-w-[92vw] bg-[#0d0d15] border border-[#F6E27F]/25 rounded-3xl shadow-[0_40px_120px_rgba(246,226,127,0.15)] overflow-hidden"
+            >
+              {/* Glow bar */}
+              <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-[#F6E27F] to-transparent" />
+
+              <div className="p-8">
+                {/* Icon + Title */}
+                <div className="flex items-start gap-4 mb-6">
+                  <div className="w-12 h-12 rounded-2xl bg-[#F6E27F]/10 border border-[#F6E27F]/20 flex items-center justify-center flex-shrink-0 shadow-[0_0_24px_rgba(246,226,127,0.2)]">
+                    <span className="text-2xl">⚠️</span>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#F6E27F] mb-1">Context Window Exceeded</p>
+                    <h2 className="text-2xl font-black text-white font-display leading-tight">Token Limit Reached</h2>
+                  </div>
+                </div>
+
+                {/* Info */}
+                <div className="bg-white/[0.03] border border-white/5 rounded-2xl p-4 mb-5 space-y-2">
+                  <div className="flex justify-between items-center">
+                    <span className="text-[11px] text-slate-500 uppercase tracking-widest font-bold">Model</span>
+                    <span className="text-sm text-white font-mono bg-white/5 px-3 py-1 rounded-lg">{tokenLimitModal.model}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-[11px] text-slate-500 uppercase tracking-widest font-bold">Provider</span>
+                    <span className="text-sm text-[#46B1FF] font-bold">{tokenLimitModal.provider}</span>
+                  </div>
+                </div>
+
+                <p className="text-sm text-slate-400 leading-relaxed mb-6">
+                  The input sent to this model exceeded its maximum context window. The pipeline has been paused at this node. You can shorten your prompt, switch to a model with a larger context window, or dismiss and continue.
+                </p>
+
+                {/* Actions */}
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setTokenLimitModal(null)}
+                    className="flex-1 py-3.5 rounded-2xl bg-white/5 border border-white/10 text-sm font-bold text-slate-300 hover:bg-white/10 hover:text-white transition-all uppercase tracking-widest"
+                  >
+                    Dismiss
+                  </button>
+                  <button
+                    onClick={() => {
+                      setTokenLimitModal(null);
+                      setShowKeyModal(true);
+                      setKeyModalType('NO_KEY');
+                    }}
+                    className="flex-[1.5] py-3.5 rounded-2xl bg-gradient-to-r from-[#F6E27F] to-[#DEF767] text-black text-sm font-black uppercase tracking-widest hover:scale-[1.02] active:scale-95 transition-all shadow-[0_8px_30px_rgba(246,226,127,0.3)]"
+                  >
+                    Switch API Key
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
       
       {viewMode === 'templates' && <TemplatesView />}
 
@@ -915,21 +1189,6 @@ const Engine = () => {
                        <Paperclip size={20} className="group-hover:rotate-12 transition-transform" />
                      </button>
 
-                     <button 
-                       onClick={runFullPipeline}
-                       disabled={graphStatus === 'running' || !projectPrompt}
-                       className={`h-14 px-8 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-3 transition-all ${
-                         projectPrompt && graphStatus !== 'running' 
-                           ? 'bg-white text-black hover:bg-[#A259FF] hover:text-white shadow-[0_0_20px_rgba(255,255,255,0.2)] active:scale-95' 
-                           : 'bg-white/5 text-slate-600 cursor-not-allowed'
-                       }`}
-                     >
-                       {graphStatus === 'running' ? (
-                         <><div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" /> Orchestrating...</>
-                       ) : (
-                         <><Play size={18} fill="currentColor" /> Initialize Engine</>
-                       )}
-                     </button>
 
                      {/* Close Button */}
                      <button 
@@ -985,6 +1244,88 @@ const Engine = () => {
                       </button>
                     </div>
                   )}
+                 </div>
+                 
+                 {/* Phase Execution Panel — Auto-run button and gated phase cards */}
+                 <div className="flex items-center justify-between mt-3 w-full px-1 mb-2">
+                   <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-500">Pipeline Execution</h3>
+                   <button 
+                     onClick={runFullPipeline}
+                     disabled={graphStatus === 'running' || !projectPrompt}
+                     className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-white hover:bg-[#A259FF] hover:border-[#A259FF] transition-all text-[9px] font-black uppercase tracking-widest shadow-lg active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                     title="Run all phases automatically"
+                   >
+                     {graphStatus === 'running' ? (
+                       <><div className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" /> Orchestrating...</>
+                     ) : (
+                       <><Play size={12} fill="currentColor" /> Auto-Run All</>
+                     )}
+                   </button>
+                 </div>
+                 <div className="w-full grid grid-cols-4 gap-2">
+                   {WORKFLOW_PHASES.map((phase, idx) => {
+                     const isCompleted = completedPhases.includes(phase.id);
+                     const isRunning = runningPhaseId === phase.id;
+                     const prevDone = idx === 0 || completedPhases.includes(WORKFLOW_PHASES[idx - 1]!.id);
+                     const isLocked = !prevDone && !isCompleted;
+                     const phaseColors = [
+                       { accent: '#46B1FF', glow: 'rgba(70,177,255,0.15)' },
+                       { accent: '#CEA3FF', glow: 'rgba(206,163,255,0.15)' },
+                       { accent: '#A259FF', glow: 'rgba(162,89,255,0.15)' },
+                       { accent: '#DEF767', glow: 'rgba(222,247,103,0.15)' },
+                     ][idx]!;
+                     return (
+                       <div
+                         key={phase.id}
+                         className="flex flex-col gap-1.5 rounded-2xl border p-3 transition-all duration-300"
+                         style={{
+                           borderColor: isCompleted ? phaseColors.accent + '60' : isRunning ? phaseColors.accent + '40' : 'rgba(255,255,255,0.05)',
+                           background: isCompleted ? phaseColors.glow : isRunning ? phaseColors.glow : 'rgba(255,255,255,0.02)',
+                           boxShadow: isRunning ? `0 0 20px ${phaseColors.glow}` : 'none'
+                         }}
+                       >
+                         <div className="flex items-center justify-between mb-0.5">
+                           <span className="text-[9px] font-black uppercase tracking-widest" style={{ color: phaseColors.accent }}>
+                             {phase.label}
+                           </span>
+                           {isCompleted && <span className="text-[10px] text-green-400">✓</span>}
+                           {isRunning && <div className="w-2.5 h-2.5 rounded-full animate-pulse" style={{ background: phaseColors.accent }} />}
+                           {isLocked && <span className="text-[10px] text-slate-600">🔒</span>}
+                         </div>
+                         <button
+                           onClick={() => runPhase(phase.id)}
+                           disabled={isLocked || isRunning || !!runningPhaseId || !projectPrompt}
+                           className="w-full py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-1"
+                           style={{
+                             background: isLocked || !projectPrompt ? 'rgba(255,255,255,0.03)' : `${phaseColors.accent}20`,
+                             color: isLocked || !projectPrompt ? '#475569' : phaseColors.accent,
+                             border: `1px solid ${isLocked ? 'rgba(255,255,255,0.05)' : phaseColors.accent + '30'}`
+                           }}
+                         >
+                           {isRunning ? (
+                             <><div className="w-2.5 h-2.5 border border-current border-t-transparent rounded-full animate-spin" /> Running</>
+                           ) : isCompleted ? (
+                             'Re-run'
+                           ) : (
+                             <><Play size={9} fill="currentColor" /> Run</>
+                           )}
+                         </button>
+                         {isCompleted && (
+                           <button
+                             onClick={() => setPhaseOutputModal(phase.id)}
+                             className="w-full py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-1 hover:opacity-80"
+                             style={{
+                               background: `${phaseColors.accent}10`,
+                               color: phaseColors.accent,
+                               border: `1px solid ${phaseColors.accent}30`
+                             }}
+                           >
+                             <FileText size={9} /> Report
+                           </button>
+                         )}
+                       </div>
+                     );
+                   })}
                  </div>
               </div>
             </motion.div>
@@ -1362,15 +1703,23 @@ const Engine = () => {
         )}
       </div>
 
-      {/* View Results Button - appears when completed */}
-      {graphStatus === 'completed' && (
+      {/* View Results Button - appears when any phase is completed */}
+      {(completedPhases.length > 0 || graphStatus === 'completed' || (graphStatus !== 'running' && nodeResults && Object.keys(nodeResults).length > 0)) && (
         <button
           onClick={() => setShowOutputScreen(true)}
-          className="fixed bottom-6 right-6 z-[60] flex items-center gap-2 px-5 py-3 rounded-xl bg-gradient-to-r from-[#DEF767] to-[#A3E636] text-black text-xs font-black uppercase tracking-widest shadow-xl shadow-[#DEF767]/20 hover:scale-105 transition-transform animate-bounce"
-          style={{ animationIterationCount: 3 }}
+          className="fixed bottom-6 right-6 z-[60] flex items-center gap-2 px-5 py-3 rounded-xl bg-gradient-to-r from-[#DEF767] to-[#A3E636] text-black text-xs font-black uppercase tracking-widest shadow-xl shadow-[#DEF767]/20 hover:scale-105 transition-transform"
         >
-          <FileText size={16} /> View Results & Download PDF
+          <FileText size={16} /> Full Report
         </button>
+      )}
+
+      {/* Per-Phase Report Modal */}
+      {phaseOutputModal && (
+        <OutputScreen
+          isOpen={true}
+          onClose={() => setPhaseOutputModal(null)}
+          phaseFilter={phaseOutputModal}
+        />
       )}
 
       <OutputScreen isOpen={showOutputScreen} onClose={() => setShowOutputScreen(false)} />
