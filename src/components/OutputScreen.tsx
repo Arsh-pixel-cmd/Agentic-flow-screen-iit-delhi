@@ -26,6 +26,16 @@ const OutputScreen = ({ isOpen, onClose, phaseFilter }: OutputScreenProps) => {
     ? (WORKFLOW_PHASES.find(p => p.id === phaseFilter)?.label || phaseFilter) + ' Phase Report'
     : 'Full Strategic Briefing';
 
+  // ── Detect builder pipeline results (non-standard keys) ──
+  const standardKeys = new Set<string>();
+  WORKFLOW_PHASES.forEach(phase => {
+    phase.categories.forEach(c => standardKeys.add(`${phase.id}::${c}`));
+  });
+  const builderResults = Object.entries(nodeResults || {})
+    .filter(([key]) => !standardKeys.has(key))
+    .map(([id, result]) => ({ id, result: result as any }));
+  const hasBuilderResults = builderResults.length > 0;
+
   if (!isOpen) return null;
 
   const handleDownloadPDF = async () => {
@@ -47,11 +57,22 @@ const OutputScreen = ({ isOpen, onClose, phaseFilter }: OutputScreenProps) => {
       `);
 
       // 2. Gather raw output (scoped to phaseFilter if set)
-      const rawOutputs = visiblePhases.map(phase => {
+      let rawOutputs = visiblePhases.map(phase => {
         const phaseNodes = phase.categories.map(c => `${phase.id}::${c}`);
         const content = phaseNodes.map(nId => nodeResults[nId]?.content).filter(Boolean).join('\\n\\n');
         return content ? `=== ${phase.label.toUpperCase()} ===\n${content}` : '';
       }).filter(Boolean).join('\\n\\n---\\n\\n');
+
+      // Include builder pipeline results if present
+      if (hasBuilderResults) {
+        const builderContent = builderResults
+          .map(({ id, result }) => result?.content ? `[Agent: ${id}]\n${result.content}` : '')
+          .filter(Boolean)
+          .join('\\n\\n');
+        if (builderContent) {
+          rawOutputs = rawOutputs ? `${rawOutputs}\\n\\n---\\n\\n=== CUSTOM PIPELINE ===\n${builderContent}` : `=== CUSTOM PIPELINE ===\n${builderContent}`;
+        }
+      }
 
       // 3. Synthesis Prompt (scoped)
       const synthesisPrompt = `
@@ -160,14 +181,25 @@ ${rawOutputs}
   };
 
   const handleCopyAll = () => {
-    const allContent = WORKFLOW_PHASES.map(phase => {
+    let allContent = WORKFLOW_PHASES.map(phase => {
       const phaseNodes = phase.categories.map(c => `${phase.id}::${c}`);
       const nodeOutputs = phaseNodes
         .map(nId => nodeResults[nId]?.content)
         .filter(Boolean)
         .join('\n\n');
-      return `## ${phase.label}\n${nodeOutputs}`;
-    }).join('\n\n---\n\n');
+      return nodeOutputs ? `## ${phase.label}\n${nodeOutputs}` : '';
+    }).filter(Boolean).join('\n\n---\n\n');
+
+    // Include builder pipeline results
+    if (hasBuilderResults) {
+      const builderContent = builderResults
+        .map(({ id, result }) => result?.content ? `### Agent: ${id}\n${result.content}` : '')
+        .filter(Boolean)
+        .join('\n\n');
+      if (builderContent) {
+        allContent = allContent ? `${allContent}\n\n---\n\n## Custom Pipeline\n${builderContent}` : `## Custom Pipeline\n${builderContent}`;
+      }
+    }
 
     navigator.clipboard.writeText(allContent);
     setCopied(true);
@@ -295,11 +327,32 @@ ${rawOutputs}
                             </div>
                           )}
 
-                          {/* UI Output */}
                           {result.ui && (
                             <div className="px-5 py-4 border-t border-white/[0.03]">
                               <div className="text-[9px] text-[#A259FF] uppercase font-bold tracking-widest mb-3">Rendered UI Asset</div>
-                              <div dangerouslySetInnerHTML={{ __html: result.ui }} />
+                              <iframe 
+                                srcDoc={`
+                                  <!DOCTYPE html>
+                                  <html>
+                                    <head>
+                                      <meta charset="utf-8">
+                                      <style>
+                                        body { margin: 0; padding: 0; background: transparent; color-scheme: dark; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+                                        ::-webkit-scrollbar { width: 6px; height: 6px; }
+                                        ::-webkit-scrollbar-track { background: transparent; }
+                                        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+                                        ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+                                      </style>
+                                    </head>
+                                    <body>
+                                      ${result.ui}
+                                    </body>
+                                  </html>
+                                `}
+                                className="w-full h-[400px] border-0 bg-transparent rounded-xl" 
+                                sandbox="allow-scripts" 
+                                title={`Output for ${agentName}`}
+                              />
                             </div>
                           )}
                         </div>
@@ -309,6 +362,74 @@ ${rawOutputs}
                 </div>
               );
             })}
+
+            {/* ── Builder Pipeline Results (non-standard node IDs) ── */}
+            {hasBuilderResults && (
+              <div className="space-y-6">
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center justify-center w-8 h-8 rounded-lg text-xs font-black text-black" style={{ background: '#DEF767' }}>
+                    ★
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-black text-white uppercase tracking-[0.15em] font-display">Custom Pipeline Results</h2>
+                    <p className="text-[10px] uppercase tracking-widest font-bold text-[#DEF767]">Builder-generated agents</p>
+                  </div>
+                  <div className="flex-1 h-px ml-4" style={{ background: 'linear-gradient(to right, #DEF76740, transparent)' }} />
+                </div>
+
+                <div className="grid gap-4">
+                  {builderResults.map(({ id, result }) => {
+                    if (!result) return null;
+                    // Try to extract a human-readable agent name from the result metadata
+                    const agentName = result.agentName || id;
+                    return (
+                      <div
+                        key={id}
+                        className="rounded-2xl overflow-hidden"
+                        style={{
+                          background: 'rgba(255,255,255,0.02)',
+                          border: '1px solid rgba(255,255,255,0.05)',
+                        }}
+                      >
+                        <div className="px-5 py-3 flex items-center gap-3 border-b border-white/[0.04]" style={{ background: 'rgba(0,0,0,0.3)' }}>
+                          <div className="w-2 h-2 rounded-full" style={{ background: '#DEF767', boxShadow: '0 0 8px #DEF767' }} />
+                          <span className="text-[11px] font-bold uppercase tracking-widest text-slate-300">{agentName}</span>
+                        </div>
+
+                        {result.content && (
+                          <div className="px-5 py-4">
+                            <pre className="text-xs text-slate-300 leading-relaxed font-secondary whitespace-pre-wrap break-words">{result.content}</pre>
+                          </div>
+                        )}
+
+                        {result.ui && (
+                          <div className="px-5 py-4 border-t border-white/[0.03]">
+                            <div className="text-[9px] text-[#A259FF] uppercase font-bold tracking-widest mb-3">Rendered UI Asset</div>
+                            <iframe 
+                              srcDoc={`
+                                <!DOCTYPE html>
+                                <html>
+                                  <head>
+                                    <meta charset="utf-8">
+                                    <style>
+                                      body { margin: 0; padding: 0; background: transparent; color-scheme: dark; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+                                    </style>
+                                  </head>
+                                  <body>${result.ui}</body>
+                                </html>
+                              `}
+                              className="w-full h-[400px] border-0 bg-transparent rounded-xl" 
+                              sandbox="allow-scripts" 
+                              title={`Output for ${agentName}`}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             {/* Footer for PDF */}
             <div className="text-center pt-8 border-t border-white/[0.04]">

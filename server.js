@@ -95,8 +95,8 @@ async function resolveApiKey(userId, sequenceId, fallbackKey) {
     if (sequenceId) {
       const pData = await getStoredKey(userId, sequenceId);
       if (pData) {
-        try { 
-          return decryptKey({ encrypted: pData.encrypted, iv: pData.iv, authTag: pData.auth_tag }); 
+        try {
+          return decryptKey({ encrypted: pData.encrypted, iv: pData.iv, authTag: pData.auth_tag });
         } catch (err) { console.error('[Server] Project key decryption failed:', err.message); }
       }
     }
@@ -104,12 +104,12 @@ async function resolveApiKey(userId, sequenceId, fallbackKey) {
     // 2. Try global key
     const gData = await getStoredKey(userId, 'global');
     if (gData) {
-      try { 
-        return decryptKey({ encrypted: gData.encrypted, iv: gData.iv, authTag: gData.auth_tag }); 
+      try {
+        return decryptKey({ encrypted: gData.encrypted, iv: gData.iv, authTag: gData.auth_tag });
       } catch (err) { console.error('[Server] Global key decryption failed:', err.message); }
     }
   }
-  return fallbackKey || process.env.VITE_OPENROUTER_API_KEY_1 || process.env.VITE_GROQ_API_KEY_1 || process.env.VITE_OPENROUTER_API_KEY_2 || '';
+  return fallbackKey || null;
 }
 
 // ── UNIVERSAL GATEWAY PROTOCOL ──────────────────────────────────────
@@ -127,9 +127,13 @@ function determineProvider(key, requestedModel) {
   } else if (key.startsWith('sk-')) {
     return { url: 'https://api.openai.com/v1/chat/completions', defaultModel: requestedModel || 'gpt-4o' };
   }
-  
+
   return { url: 'https://openrouter.ai/api/v1/chat/completions', defaultModel: requestedModel || 'openrouter/auto' };
 }
+
+// ── FALLBACK KEY TRACKER ───────────────────────────────────────────
+const FALLBACK_KEYS = (process.env.FALLBACK_KEYS || '').split(',').map(k => k.trim()).filter(Boolean);
+const userFallbackTracker = new Map(); // userId -> sequenceId
 
 // ── KEY MANAGEMENT ENDPOINTS ────────────────────────────────────────
 
@@ -149,7 +153,7 @@ app.post('/api/keys/save', async (req, res) => {
     const trimmed = apiKey.trim();
     const encryptedData = encryptKey(trimmed);
     const lastFour = trimmed.slice(-4);
-    
+
     await saveStoredKey(userId, 'global', encryptedData, lastFour);
     console.log(`[Server] ✓ API key saved for user ${userId.substring(0, 8)}...`);
     res.json({ success: true, lastFour });
@@ -237,13 +241,13 @@ app.post('/api/keys/verify', async (req, res) => {
         max_tokens: 5,
       }),
     });
-    
+
     if (!response.ok) {
       const errorText = await response.text();
       console.log('[Verify Error] Status:', response.status, 'Response:', errorText);
       return res.json({ valid: false, statusCode: response.status, reason: `Provider Error (${response.status}): ${errorText.substring(0, 100)}` });
     }
-    
+
     res.json({ valid: true, statusCode: response.status });
   } catch (err) {
     console.log('[Verify Exception]', err.message);
@@ -259,26 +263,30 @@ app.post('/api/models', async (req, res) => {
   if (!apiKey) return res.json({ models: [] });
 
   const { url } = determineProvider(apiKey, null);
-  
+
   try {
     if (apiKey.startsWith('sk-ant-')) {
-      return res.json({ models: [
-        { id: 'claude-3-5-sonnet-20240620', name: 'Claude 3.5 Sonnet' },
-        { id: 'claude-3-opus-20240229', name: 'Claude 3 Opus' },
-        { id: 'claude-3-haiku-20240307', name: 'Claude 3 Haiku' }
-      ]});
+      return res.json({
+        models: [
+          { id: 'claude-3-5-sonnet-20240620', name: 'Claude 3.5 Sonnet' },
+          { id: 'claude-3-opus-20240229', name: 'Claude 3 Opus' },
+          { id: 'claude-3-haiku-20240307', name: 'Claude 3 Haiku' }
+        ]
+      });
     }
     if (apiKey.startsWith('AIzaSy')) {
-      return res.json({ models: [
-        { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash' },
-        { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro' },
-        { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash' },
-        { id: 'gemini-2.0-pro-exp-02-05', name: 'Gemini 2.0 Pro Experimental' }
-      ]});
+      return res.json({
+        models: [
+          { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash' },
+          { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro' },
+          { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash' },
+          { id: 'gemini-2.0-pro-exp-02-05', name: 'Gemini 2.0 Pro Experimental' }
+        ]
+      });
     }
 
     const modelsUrl = url.replace('/chat/completions', '/models');
-    
+
     const response = await fetch(modelsUrl, {
       method: 'GET',
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' }
@@ -330,7 +338,7 @@ app.post('/api/llm', async (req, res) => {
   // ── NODE EXECUTION & DELIVERY (DOUBLE DIAMOND PROTOCOL) ─────────
   let productSpec = "Provide deep expert analysis and structured technical output. Avoid placeholders.";
   const phaseTitle = (agent.phaseLabel || agent.categoryName || '').toUpperCase();
-  
+
   if (phaseTitle.includes('DISCOVER') || phaseTitle.includes('RESEARCH')) {
     productSpec = `* Phase: [DISCOVER] - Research & Exploration
 * Deliverable: Deep-dive market sentiment analysis, competitor feature mapping, and user persona profiling. 
@@ -373,8 +381,8 @@ CRITICAL: Return ONLY the raw JSON object. No markdown fences. NO Markdown synta
 
   try {
     console.log(`[Server] Sending request to LLM provider...`);
-    
-    const response = await fetch(url, {
+
+    let response = await fetch(url, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${resolvedKey}`,
@@ -393,11 +401,45 @@ CRITICAL: Return ONLY the raw JSON object. No markdown fences. NO Markdown synta
       }),
     });
 
+    if (!response.ok && response.status === 429 && FALLBACK_KEYS.length > 0) {
+      console.log(`[Server] Primary key rate limited. Evaluating fallback protocol for user ${userId}...`);
+      const previousFallbackSequence = userFallbackTracker.get(userId);
+      
+      if (!previousFallbackSequence || previousFallbackSequence === sequenceId) {
+         // Allow fallback: Either first time using fallback or still on the same pipeline
+         userFallbackTracker.set(userId, sequenceId);
+         const randomFallbackKey = FALLBACK_KEYS[Math.floor(Math.random() * FALLBACK_KEYS.length)];
+         const { url: fallbackUrl, defaultModel: fallbackModel } = determineProvider(randomFallbackKey, null);
+         
+         console.log(`[Server] Fallback approved. Retrying with fallback model ${fallbackModel}...`);
+         response = await fetch(fallbackUrl, {
+           method: 'POST',
+           headers: {
+             Authorization: `Bearer ${randomFallbackKey}`,
+             'Content-Type': 'application/json',
+             'HTTP-Referer': 'http://localhost:5173',
+             'X-Title': 'Agentic Flow Express Server',
+           },
+           body: JSON.stringify({
+             model: fallbackModel,
+             messages: [
+               { role: 'system', content: systemPrompt },
+               { role: 'user', content: userTask || 'Begin execution sequence.' },
+             ],
+             response_format: { type: 'json_object' },
+             temperature: 0.7,
+           }),
+         });
+      } else {
+         console.log(`[Server] Fallback DENIED. User ${userId} switched pipelines from ${previousFallbackSequence} to ${sequenceId}.`);
+      }
+    }
+
     if (!response.ok) {
       console.error(`[Server] Provider Error: ${response.status} ${response.statusText}`);
       const errJson = await response.json().catch(() => ({}));
       const errMessage = errJson.error?.message || errJson.message || response.statusText || '';
-      
+
       // Classify error type precisely
       let errorType = 'PROVIDER_ERROR';
       if (response.status === 401 || response.status === 403) errorType = 'INVALID_KEY';
@@ -432,7 +474,7 @@ CRITICAL: Return ONLY the raw JSON object. No markdown fences. NO Markdown synta
     const data = await response.json();
     let raw = data.choices?.[0]?.message?.content || '';
     console.log(`[Server] Raw LLM response length: ${raw.length} chars`);
-    
+
     const formatMarkdownToHTML = (text) => {
       if (!text) return '';
       return text
@@ -454,7 +496,7 @@ CRITICAL: Return ONLY the raw JSON object. No markdown fences. NO Markdown synta
         const cleanedRaw = extractedRaw.replace(/[\u0000-\u0019]+/g, "");
         parsed = JSON.parse(cleanedRaw);
         if (!parsed.content || !parsed.ui) throw new Error('Response missing required fields.');
-        
+
         // If the LLM still returned markdown in the UI instead of HTML, format it beautifully
         if (!/<[a-z][\s\S]*>/i.test(parsed.ui) || parsed.ui.includes('**')) {
           let safeContent = parsed.ui.replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -469,7 +511,7 @@ CRITICAL: Return ONLY the raw JSON object. No markdown fences. NO Markdown synta
       const contentRegex = /"content"\s*:\s*"?([\s\S]*?)"?(?:,\s*"ui"|\}$)/;
       const match = raw.match(contentRegex);
       if (match && match[1]) {
-          salvagedContent = match[1].replace(/\\n/g, '\n').replace(/\\"/g, '"');
+        salvagedContent = match[1].replace(/\\n/g, '\n').replace(/\\"/g, '"');
       }
 
       let safeContent = salvagedContent.replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -549,7 +591,7 @@ app.post('/api/agent/stream', async (req, res) => {
   } catch (err) {
     res.write(`data: {"choices":[{"delta":{"content":"\\n[STREAM FAILURE: ${err.message}]"}}]}\n\n`);
   }
-  
+
   res.write('data: [DONE]\n\n');
   res.end();
 });

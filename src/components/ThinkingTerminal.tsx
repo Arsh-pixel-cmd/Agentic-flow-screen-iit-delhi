@@ -13,6 +13,13 @@ const ThinkingTerminal = ({ node, isRunning }: any) => {
   const projectPrompt = useWorkflowStore((state: any) => state.projectPrompt);
   const textRef = useRef('');
   const expandedRef = useRef(false);
+  const scrollSmallRef = useRef<HTMLDivElement>(null);
+  const scrollLargeRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (scrollSmallRef.current) scrollSmallRef.current.scrollTop = scrollSmallRef.current.scrollHeight;
+    if (scrollLargeRef.current) scrollLargeRef.current.scrollTop = scrollLargeRef.current.scrollHeight;
+  }, [text, expanded]);
 
   useEffect(() => {
     textRef.current = text;
@@ -107,13 +114,13 @@ const ThinkingTerminal = ({ node, isRunning }: any) => {
   return (
     <>
       <AnimatePresence>
-        {active && !expanded && (
+        {active && (
           <motion.div
              initial={{ opacity: 0, scale: 0.9, x: 10, y: 10 }}
-             animate={{ opacity: 1, scale: 1, x: 0, y: 0 }}
+             animate={{ opacity: expanded ? 0 : 1, scale: expanded ? 0.9 : 1, x: 0, y: 0, pointerEvents: expanded ? 'none' : 'auto' }}
              exit={{ opacity: 0, scale: 0.9, x: 10, y: 10 }}
              transition={{ duration: 0.3 }}
-             className="absolute z-[100] pointer-events-auto cursor-pointer group"
+             className="absolute z-[100] cursor-pointer group"
              style={{ left: '100%', bottom: 0, marginLeft: '12px' }}
              onClick={(e) => {
                e.stopPropagation();
@@ -130,13 +137,23 @@ const ThinkingTerminal = ({ node, isRunning }: any) => {
                    <span className="text-[9px] uppercase tracking-[0.2em] text-[#A259FF] ml-auto font-bold opacity-80 flex items-center gap-2">
                       COM-LINK // {isRunning ? 'RUNNING' : 'TERMINATED'}
                    </span>
-                   <button title="Expand Terminal" className="ml-2 opacity-0 group-hover:opacity-100 transition-opacity text-white/50 hover:text-white">
+                   <button 
+                     title="Expand Terminal" 
+                     className="ml-2 opacity-0 group-hover:opacity-100 transition-opacity text-white/50 hover:text-white"
+                     onClick={(e) => {
+                       e.stopPropagation();
+                       setExpanded(true);
+                     }}
+                   >
                      <Maximize2 size={12} />
                    </button>
                 </div>
                 
                 {/* Terminal Output */}
-                <div className="p-3 font-mono text-[10px] text-[#A78BFA] leading-relaxed break-words whitespace-pre-wrap flex-1 max-h-32 overflow-y-auto custom-scrollbar-neon scroll-smooth flex flex-col justify-end">
+                <div 
+                  ref={scrollSmallRef}
+                  className="p-3 font-mono text-[10px] text-[#A78BFA] leading-relaxed break-words whitespace-pre-wrap flex-1 max-h-32 overflow-y-auto custom-scrollbar-neon scroll-smooth flex flex-col"
+                >
                    <div>
                      {text}
                      <span className="animate-pulse font-bold ml-1 text-white">_</span>
@@ -152,7 +169,13 @@ const ThinkingTerminal = ({ node, isRunning }: any) => {
           <div 
             className="fixed inset-0 z-[9999] flex items-center justify-center pointer-events-auto"
             style={{ background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)' }}
-            onClick={(e) => { e.stopPropagation(); setExpanded(false); if (!isRunning) setActive(false); }}
+            onPointerDown={(e) => { 
+              if (e.target === e.currentTarget) {
+                e.stopPropagation(); 
+                setExpanded(false); 
+                if (!isRunning) setActive(false); 
+              }
+            }}
           >
             <motion.div
                initial={{ opacity: 0, scale: 0.95, y: 20 }}
@@ -184,7 +207,10 @@ const ThinkingTerminal = ({ node, isRunning }: any) => {
                </div>
                
                {/* Terminal Output */}
-               <div className="p-6 font-mono text-sm text-[#A78BFA] leading-relaxed break-words whitespace-pre-wrap flex-1 overflow-y-auto custom-scrollbar-neon scroll-smooth flex flex-col">
+               <div 
+                 ref={scrollLargeRef}
+                 className="p-6 font-mono text-sm text-[#A78BFA] leading-relaxed break-words whitespace-pre-wrap flex-1 overflow-y-auto custom-scrollbar-neon scroll-smooth flex flex-col"
+               >
                   <div>
                     {text}
                     <span className="animate-pulse font-bold ml-1 text-white">_</span>

@@ -360,6 +360,9 @@ export const useBuilderStore = create<BuilderStore>((set, get) => ({
       selectedElementId: null,
       viewMode: 'builder'
     });
+    
+    // Hard reload to completely reboot the Engine state for the new pipeline
+    window.location.reload();
   },
   
   updateTemplate: async (id: any, updates: any) => {

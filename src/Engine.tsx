@@ -133,20 +133,20 @@ const Engine = () => {
              // Initialize flowTitle
              useWorkflowStore.setState({ flowTitle: data.title || 'Untitled Flow' });
              
-             // Fetch templates for the user and restore deployedTemplateId
-             const { data: { session } } = await supabase.auth.getSession();
-             if (session) {
-               const { data: templates } = await supabase.from('templates').select('*').eq('user_id', session.user.id).order('created_at', { ascending: false });
-               if (templates) {
-                 useBuilderStore.setState({ templates });
-               }
-             }
-             
              // Restore the deployed template ID if it was saved in canvas_state
              if (state.deployedTemplateId) {
                useBuilderStore.setState({ deployedTemplateId: state.deployedTemplateId });
              }
           } // end if data?.canvas_state
+          
+          // Fetch templates for the user (do this even if canvas_state is empty)
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session) {
+            const { data: templates } = await supabase.from('templates').select('*').eq('user_id', session.user.id).order('created_at', { ascending: false });
+            if (templates) {
+              useBuilderStore.setState({ templates });
+            }
+          }
         } // end if seqId
         validateGraph();
         setGraphStatus('ready');
@@ -598,10 +598,12 @@ const Engine = () => {
             .join('\n\n---\n\n');
         }
         
-        const CONCURRENCY_LIMIT = 3;
+        const CONCURRENCY_LIMIT = 2;
         for (let batchIdx = 0; batchIdx < nodesAtDepth.length; batchIdx += CONCURRENCY_LIMIT) {
           const batch = nodesAtDepth.slice(batchIdx, batchIdx + CONCURRENCY_LIMIT);
-          await Promise.all(batch.map(async (nId: any) => {
+          await Promise.all(batch.map(async (nId: any, idx: number) => {
+          // Stagger requests to avoid burst rate limits (1.5 seconds per node in batch)
+          if (idx > 0) await new Promise(resolve => setTimeout(resolve, idx * 1500));
           const nodeInfo = (layout as any)[nId];
           const agentData = {
             id: nId,
@@ -623,10 +625,10 @@ const Engine = () => {
               ]);
 
               if (result && result._errorType) {
-                 store.setNodeResult(nId, result);
+                 store.setNodeResult(nId, { ...result, agentName: agentData.name });
                  store.setNodeState(nId, 'stuck_debugger');
               } else {
-                 store.setNodeResult(nId, result);
+                 store.setNodeResult(nId, { ...result, agentName: agentData.name });
                  store.setNodeState(nId, 'completed');
                  resolved = true;
                  break;
@@ -694,10 +696,12 @@ const Engine = () => {
             .join('\n\n---\n\n');
         }
 
-        const CONCURRENCY_LIMIT = 3;
+        const CONCURRENCY_LIMIT = 2;
         for (let batchIdx = 0; batchIdx < phaseNodes.length; batchIdx += CONCURRENCY_LIMIT) {
           const batch = phaseNodes.slice(batchIdx, batchIdx + CONCURRENCY_LIMIT);
-          await Promise.all(batch.map(async (nId: any) => {
+          await Promise.all(batch.map(async (nId: any, idx: number) => {
+          // Stagger requests to avoid burst rate limits (1.5 seconds per node in batch)
+          if (idx > 0) await new Promise(resolve => setTimeout(resolve, idx * 1500));
           const nodeCategory = nId.split('::')[1];
           const agentData = {
             id: nId,
@@ -927,9 +931,32 @@ const Engine = () => {
 
     // Node with AI results
     if (nodeResults && nodeResults[selectedNodeId]?.ui) {
+      const safeHtml = `
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <meta charset="utf-8">
+            <style>
+              body { margin: 0; padding: 0; background: transparent; color-scheme: dark; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+              ::-webkit-scrollbar { width: 6px; height: 6px; }
+              ::-webkit-scrollbar-track { background: transparent; }
+              ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+              ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+            </style>
+          </head>
+          <body>
+            ${nodeResults[selectedNodeId].ui}
+          </body>
+        </html>
+      `;
       return (
-        <div className="flex-1 w-full relative">
-          <div dangerouslySetInnerHTML={{ __html: nodeResults[selectedNodeId].ui }} />
+        <div className="flex-1 w-full relative h-[600px]">
+          <iframe 
+            srcDoc={safeHtml} 
+            className="w-full h-full border-0 bg-transparent rounded-2xl" 
+            sandbox="allow-scripts" 
+            title="Agent Output"
+          />
         </div>
       );
     }
@@ -1250,7 +1277,10 @@ const Engine = () => {
                  <div className="flex items-center justify-between mt-3 w-full px-1 mb-2">
                    <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-500">Pipeline Execution</h3>
                    <button 
-                     onClick={runFullPipeline}
+                     onClick={() => {
+                       runFullPipeline();
+                       setIsCommandExpanded(false);
+                     }}
                      disabled={graphStatus === 'running' || !projectPrompt}
                      className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-white hover:bg-[#A259FF] hover:border-[#A259FF] transition-all text-[9px] font-black uppercase tracking-widest shadow-lg active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                      title="Run all phases automatically"
@@ -1258,7 +1288,7 @@ const Engine = () => {
                      {graphStatus === 'running' ? (
                        <><div className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" /> Orchestrating...</>
                      ) : (
-                       <><Play size={12} fill="currentColor" /> Auto-Run All</>
+                       <><Play size={12} fill="currentColor" /> Run</>
                      )}
                    </button>
                  </div>
@@ -1290,27 +1320,8 @@ const Engine = () => {
                            </span>
                            {isCompleted && <span className="text-[10px] text-green-400">✓</span>}
                            {isRunning && <div className="w-2.5 h-2.5 rounded-full animate-pulse" style={{ background: phaseColors.accent }} />}
-                           {isLocked && <span className="text-[10px] text-slate-600">🔒</span>}
                          </div>
-                         <button
-                           onClick={() => runPhase(phase.id)}
-                           disabled={isLocked || isRunning || !!runningPhaseId || !projectPrompt}
-                           className="w-full py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-1"
-                           style={{
-                             background: isLocked || !projectPrompt ? 'rgba(255,255,255,0.03)' : `${phaseColors.accent}20`,
-                             color: isLocked || !projectPrompt ? '#475569' : phaseColors.accent,
-                             border: `1px solid ${isLocked ? 'rgba(255,255,255,0.05)' : phaseColors.accent + '30'}`
-                           }}
-                         >
-                           {isRunning ? (
-                             <><div className="w-2.5 h-2.5 border border-current border-t-transparent rounded-full animate-spin" /> Running</>
-                           ) : isCompleted ? (
-                             'Re-run'
-                           ) : (
-                             <><Play size={9} fill="currentColor" /> Run</>
-                           )}
-                         </button>
-                         {isCompleted && (
+                         {isCompleted ? (
                            <button
                              onClick={() => setPhaseOutputModal(phase.id)}
                              className="w-full py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-1 hover:opacity-80"
@@ -1320,7 +1331,24 @@ const Engine = () => {
                                border: `1px solid ${phaseColors.accent}30`
                              }}
                            >
-                             <FileText size={9} /> Report
+                             <FileText size={9} /> View Report
+                           </button>
+                         ) : (
+                           <button
+                             onClick={() => runPhase(phase.id)}
+                             disabled={isLocked || isRunning || !!runningPhaseId || !projectPrompt}
+                             className="w-full py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-1"
+                             style={{
+                               background: isLocked || !projectPrompt ? 'rgba(255,255,255,0.03)' : `${phaseColors.accent}20`,
+                               color: isLocked || !projectPrompt ? '#475569' : phaseColors.accent,
+                               border: `1px solid ${isLocked ? 'rgba(255,255,255,0.05)' : phaseColors.accent + '30'}`
+                             }}
+                           >
+                             {isRunning ? (
+                               <><div className="w-2.5 h-2.5 border border-current border-t-transparent rounded-full animate-spin" /> Running</>
+                             ) : (
+                               <><Play size={9} fill="currentColor" /> Run</>
+                             )}
                            </button>
                          )}
                        </div>
