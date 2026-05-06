@@ -12,6 +12,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@emotion/is-prop-valid": "^1.4.0",
     "@supabase/supabase-js": "^2.104.1",
     "@tailwindcss/postcss": "^4.2.2",
     "canvas-confetti": "^1.9.4",
